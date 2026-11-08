@@ -1,10 +1,10 @@
 # OpenWrt for the FRITZ!Box 7390
 
-A current Linux kernel (6.18) and OpenWrt 25.12 for the AVM FRITZ!Box Fon WLAN 7390, for use as an access point and switch behind an existing router.
+A current Linux kernel (6.18) and OpenWrt 25.12 for the AVM FRITZ!Box Fon WLAN 7390, for use as an access point and switch behind an existing router. Unlike the AVM firmware, whose last update (06.88) is from 2023, it gets OpenWrt's security updates and its packages and settings, for example VLANs, several Wi-Fi networks or a guest network.
 
 > **Not ready to install yet.** The image runs on a real box when started from RAM, which leaves the installed AVM firmware untouched. The version for the flash is being tested. This page will describe how to install it once that has been done on a box.
 
-This is an unofficial hobby project. It is not affiliated with AVM or the OpenWrt project.
+This is an unofficial hobby project, tested on one box only. It is not affiliated with AVM or the OpenWrt project.
 
 ## What works
 
@@ -17,41 +17,23 @@ This is an unofficial hobby project. It is not affiliated with AVM or the OpenWr
 | LEDs | can be switched off or set in LuCI under System, LED Configuration |
 | USB | works, tested with a USB Ethernet adapter |
 
+The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it can move about 130 Mbit/s between LAN and Wi-Fi.
+
 ## What doesn't work
 
 | Feature | State |
 |---|---|
-| DSL | not supported, there is no open driver |
+| DSL | not supported, there is no open driver, so the box only works behind another router |
 | Telephony (FON, ISDN, DECT) | not supported, there are no open drivers |
 | Saved settings | not yet: the first version keeps the flash read only, so every start begins with the settings of the image |
 | Updates from the web interface (`sysupgrade`) | not yet |
 | Internal storage (512 MB NAND) | not usable yet |
 | WLAN and DECT buttons | not set up yet |
-
-The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it can move about 130 Mbit/s between LAN and Wi-Fi.
-
-## Compared with the AVM firmware
-
-Advantages:
-
-- Current kernel and OpenWrt with their security updates. AVM's last update for the 7390 (06.88) is from 2023.
-- WPA3 for Wi-Fi.
-- OpenWrt's packages and settings, for example VLANs, several Wi-Fi networks or a guest network.
-
-Disadvantages:
-
-- No DSL and no telephony, so the box only works behind another router.
-- Settings are not saved yet.
-- Experimental: tested on one box only.
-- The image has to be built yourself, because it needs firmware files from AVM that may not be passed on (see `DEVELOPMENT.md`).
+| Ready-made images | not possible: the image needs firmware files from AVM that may not be passed on, so everyone builds it with their own copy (see `DEVELOPMENT.md`) |
 
 ## Going back to the AVM firmware
 
-The box's bootloader (EVA) stays untouched and can be reached over the network at every start, so an AVM firmware image can always be written back. The steps will be described together with the installation.
-
-## Alternative
-
-If you mainly want current updates and faster Wi-Fi, a used device with official OpenWrt support is far less effort, for example a FRITZ!Box 7530. Check the OpenWrt device list before buying.
+The box's bootloader (EVA) stays untouched and can be reached over the network at every start, so an AVM firmware image can always be written back. This was done once already, with a backup of the box's own firmware. The steps will be described together with the installation.
 
 ## Development
 
