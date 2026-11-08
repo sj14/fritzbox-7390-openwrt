@@ -227,7 +227,7 @@ All work so far was done without a console. The kernel writes its log to a reser
 ## Open items
 
 - [x] Install the flash image
-- [ ] Test scripts for a box that runs OpenWrt instead of Freetz (restart into EVA over SSH)
+- [x] Test scripts for a box that runs OpenWrt instead of Freetz (`test/box.sh`, restart into EVA over SSH)
 - [ ] Saved settings: a writable `rootfs_data` partition, which needs a CFI flash driver
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`

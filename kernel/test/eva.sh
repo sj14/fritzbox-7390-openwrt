@@ -1,7 +1,8 @@
-# Loads an image into RAM through EVA while the box runs Freetz. Source this file
-# after freetz.sh. Needs BOX_BSSID_PREFIX, the start of the box's own BSSIDs,
-# because this machine must not reach the network through the box's radios, and
-# WIFI_DEVICE, this machine's Wi-Fi interface (default wlp5s0).
+# Loads an image into RAM through EVA, or writes it to flash, while the box runs
+# its installed firmware. Source this file after box.sh. Needs BOX_BSSID_PREFIX,
+# the start of the box's own BSSIDs, because this machine must not reach the
+# network through the box's radios, and WIFI_DEVICE, this machine's Wi-Fi
+# interface (default wlp5s0).
 : "${BOX_BSSID_PREFIX:?set BOX_BSSID_PREFIX to the start of the box BSSIDs}"
 WIFI_DEVICE=${WIFI_DEVICE:-wlp5s0}
 EVA_ADDRESS=192.168.178.1
@@ -26,15 +27,15 @@ eva_start() {
         return 2
     fi
 
-    # Freetz ignores a restart during its first seconds.
+    # Freetz ignores a restart during its first seconds, so wait for both firmwares.
     echo 'cut -d. -f1 /proc/uptime' > "$work/uptime.sh"
-    until [ "$(freetz_run "$work/uptime.sh" | head -1)" -ge 90 ] 2> /dev/null; do
+    until [ "$(box_run "$work/uptime.sh" | head -1)" -ge 90 ] 2> /dev/null; do
         sleep 5
     done
 
     # Take this machine off the box's radios, so that it still sees EVA.
-    printf 'ifconfig ath0 down\nifconfig ath1 down\n' > "$work/radio-off.sh"
-    freetz_run "$work/radio-off.sh" > /dev/null
+    echo "$BOX_RADIOS_OFF" > "$work/radio-off.sh"
+    box_run "$work/radio-off.sh" > /dev/null
     for attempt in $(seq 1 40); do
         case "$(current_access_point)" in
             ""|"$BOX_BSSID_PREFIX"*) sleep 2 ;;
@@ -55,7 +56,7 @@ eva_start() {
     # Freetz sometimes ignores /sbin/reboot, so repeat it while the box is up.
     printf '(sleep 1; /sbin/reboot) > /dev/null 2>&1 &\n' > "$work/reboot.sh"
     while kill -0 "$loader" 2> /dev/null; do
-        freetz_is_up && freetz_run "$work/reboot.sh" > /dev/null
+        box_is_up && box_run "$work/reboot.sh" > /dev/null
         for second in $(seq 1 40); do
             kill -0 "$loader" 2> /dev/null || break
             sleep 1

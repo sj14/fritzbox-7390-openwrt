@@ -1,29 +1,23 @@
 #!/usr/bin/env bash
 # Loads an OpenWrt test image into RAM through EVA, saves its state over SSH and
-# restarts it, so that the box returns to Freetz.
+# restarts it, so that the box returns to its installed firmware.
 # Usage: openwrt-test.sh <image> <SSH private key> <output prefix>
 #
 # Needs the variables of box-test.sh except RAMLOG_TOOL. The test image comes up
-# at 192.168.0.250 (openwrt/uci-defaults-test). Its host key changes with every
-# start, so it is not checked.
+# at OPENWRT_ADDRESS (see openwrt.sh) and accepts the given key.
 set -u
 TEST_DIR=$(cd "$(dirname "$0")" && pwd)
-. "$TEST_DIR/freetz.sh"
-. "$TEST_DIR/eva.sh"
 IMAGE=$1
-KEY=$2
+OPENWRT_KEY=$2
 OUT=$3
-OPENWRT_ADDRESS=192.168.0.250
-
-openwrt() {
-    ssh -i "$KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        -o ConnectTimeout=5 -o BatchMode=yes "root@$OPENWRT_ADDRESS" "$@"
-}
+. "$TEST_DIR/openwrt.sh"
+. "$TEST_DIR/box.sh"
+. "$TEST_DIR/eva.sh"
 
 eva_load "$IMAGE" "$TEST_WORK_DIR" || exit $?
 
 start=$(date +%s)
-until openwrt true 2> /dev/null; do
+until openwrt_is_up; do
     if [ $(( $(date +%s) - start )) -ge 300 ]; then
         echo "no SSH after 300 s, the test image restarts by itself"
         exit 6
@@ -34,9 +28,12 @@ echo "SSH after $(( $(date +%s) - start )) s"
 echo "LuCI answers with HTTP $(curl -s -o /dev/null --max-time 10 -w '%{http_code}' "http://$OPENWRT_ADDRESS/cgi-bin/luci")"
 
 # The state report leaves the Wi-Fi keys out.
-openwrt test-diagnostics > "$OUT.state" 2>&1
-openwrt 'dmesg; logread' > "$OUT.log" 2>&1
-openwrt reboot
+openwrt_ssh test-diagnostics > "$OUT.state" 2>&1
+openwrt_ssh 'dmesg; logread' > "$OUT.log" 2>&1
+openwrt_ssh reboot
 
-freetz_wait "${FREETZ_WAIT:-600}" || { echo "Freetz did not come back"; exit 3; }
-echo "Freetz is back"
+# An installed OpenWrt answers at the same address, so give the test image time
+# to go down first.
+sleep 20
+box_wait "${BOX_WAIT:-600}" || { echo "the installed firmware did not come back"; exit 3; }
+echo "the installed firmware is back"
