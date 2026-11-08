@@ -2,9 +2,14 @@
 # Prints the state of a test image. /init runs it before the test image restarts
 # and puts the output into the RAM log. Wi-Fi keys are left out.
 for command in "mount" "ifstatus lan" "ubus call network.device status" "ip addr" "ip route" \
-    "iw dev" "wifi status" "cat /etc/config/network" "ps w"; do
+    "iw dev" "wifi status" "cat /etc/config/network" "ps w" "cat /proc/mtd"; do
     echo "== $command"
     $command 2>&1 | grep -v -i '"key"\|\.key='
+done
+# Erase block layout of each MTD device, for the flash partitions.
+echo "== erase regions"
+for device in /sys/class/mtd/mtd[0-9]*; do
+    [ -f "$device/numeraseregions" ] && echo "$(cat "$device/name"): erasesize $(cat "$device/erasesize"), regions $(cat "$device/numeraseregions")"
 done
 echo "== wireless"
 uci show wireless | grep -v '\.key='

@@ -49,7 +49,7 @@ The starting point was AVM's newest GPL package (06.86, the box runs 06.88), whi
 |---|---|---|
 | IRQ, timer, early console, reset | works | `kernel/linux/arch/mips/fusiv/` (`prom.c`, `irq.c`) |
 | PCI | works | patch 0002 |
-| NOR flash | works, read only | device tree (`mtd-rom`) |
+| NOR flash | detected through CFI, all partitions read only | device tree (`cfi-flash`) |
 | NAND (512 MB) | open | AVM's `drivers/mtd/nand/direct_avm.c` |
 | USB | works, needs the FPGA for power | `usb.c`, FPGA loaded by `/init` |
 | Wi-Fi | works | `ath9k` with calibration from flash, patches 0003, 0006 to 0008 |
@@ -228,7 +228,7 @@ All work so far was done without a console. The kernel writes its log to a reser
 
 - [x] Install the flash image
 - [x] Test scripts for a box that runs OpenWrt instead of Freetz (`test/box.sh`, restart into EVA over SSH)
-- [ ] Saved settings: a writable `rootfs_data` partition, which needs a CFI flash driver
+- [ ] Saved settings: a writable `rootfs_data` partition. Linux already detects the chip through CFI (2026-11-08, from RAM): Macronix, manufacturer ID `0xc2`, chip ID `0x227e` (MX29GL family, 16 MB), one x16 chip with the AMD command set, extended query 1.3, uniform erase blocks of 128 KB, so `urlader` is exactly the first block. AVM's kernel uses the same driver (`CONFIG_MTD_CFI_AMDSTD`, bank width 2)
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] NAND (512 MB)

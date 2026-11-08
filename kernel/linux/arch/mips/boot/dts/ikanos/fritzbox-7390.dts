@@ -136,12 +136,14 @@
 		};
 
 		/*
-		 * Mapped as ROM, so that Linux never sends a command to the chip.
+		 * An AMD style CFI chip, as in AVM's kernel (CONFIG_MTD_CFI_AMDSTD, 16 bit).
+		 * The CFI driver only queries it at the start. All partitions are read
+		 * only, so Linux never erases or programs it.
 		 * The urlader partition also holds secrets in its environment, so its
 		 * content must stay out of logs. Only the calibration cells are used.
 		 */
 		flash@1f000000 {
-			compatible = "mtd-rom";
+			compatible = "cfi-flash";
 			reg = <0x1f000000 0x1000000>;
 			bank-width = <2>;
 
