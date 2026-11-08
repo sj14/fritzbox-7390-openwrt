@@ -42,6 +42,8 @@ AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfil
 | `test/` | scripts for test runs from another machine, through Freetz and EVA |
 | `tools/make-eva-image.py` | creates and checks images for the EVA bootloader |
 | `tools/eva-ramboot.py` | loads an image through EVA, restarts the box on failure |
+| `tools/fetch-avm-firmware.sh` | takes the proprietary files from AVM's public firmware download |
+| `tools/fix-avm-squashfs.py`, `unsquashfs-avm.nix` | make AVM's root file system readable |
 | `../tools/fusiv-links.c` | shows link changes of the five switch PHYs, to find which socket is which |
 
 ## Build
