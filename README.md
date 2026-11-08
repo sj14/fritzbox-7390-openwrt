@@ -38,3 +38,7 @@ The box's bootloader (EVA) stays untouched and can be reached over the network a
 ## Development
 
 How the image is built and tested, and what was found out about the hardware: `DEVELOPMENT.md` and `kernel/README.md`.
+
+## License
+
+GPL-2.0-only, see `LICENSE`, the same as the Linux kernel. The firmware files from AVM that a build needs are not part of this repository and not covered by it.
