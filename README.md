@@ -29,7 +29,7 @@ The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it c
 | Updates from the web interface (`sysupgrade`) | not yet |
 | Internal storage (512 MB NAND) | not usable yet |
 | WLAN and DECT buttons | not set up yet |
-| Ready-made images | not possible: the image needs firmware files from AVM that may not be passed on, so everyone builds it with their own copy (see `DEVELOPMENT.md`) |
+| Ready-made images | not possible: the image needs firmware files from AVM that may not be passed on, so everyone builds it; a script takes them from AVM's public firmware download (see `kernel/README.md`) |
 
 ## Going back to the AVM firmware
 

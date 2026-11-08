@@ -24,6 +24,9 @@ pkgs.mkShell {
   # A static MIPS build, which goes into the initramfs.
   HOSTAPD = "${import ./hostapd.nix { inherit pkgs; }}/bin/hostapd";
 
+  # Reads the root file system of AVM's firmware, for tools/fetch-avm-firmware.sh.
+  UNSQUASHFS_AVM = "${import ./unsquashfs-avm.nix { inherit pkgs; }}/bin/unsquashfs3-multi";
+
   # cfg80211 needs this database for 5 GHz.
   REGDB = "${pkgs.wireless-regdb}/lib/firmware";
 }

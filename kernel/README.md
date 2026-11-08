@@ -6,12 +6,19 @@ Groundwork for milestone 1: a current kernel that boots from RAM to a first user
 
 ## Firmware
 
-The image needs two files from your own box, which must not be published:
+The image needs files from AVM's firmware, which must not be published:
 
 - `BITFILE`: the FPGA bitstream, which powers the USB port.
 - `AP_FIRMWARE_DIR`: `fusiv-bmu.bin` and `fusiv-eth.bin`, written by `../tools/extract-ap-firmware.py` from `fusivlib_lkm.ko` (prefix `BMUAP`) and `ethdriver_lkm.ko` (prefix `ETHAP`).
 
 Without the second one, `lan0` can't start and the box has no network at all, so `build.sh` stops without it.
+
+They don't have to come from a box. `tools/fetch-avm-firmware.sh <directory>`, run inside `nix-shell`, downloads AVM's public firmware 06.88 for the 7390, checks its SHA256 and writes `bitfile.bit` and `ap-firmware/` there. It reads AVM's squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `tools/fix-avm-squashfs.py` has corrected AVM's metadata pointers. The files it wrote on 2026-11-08 were identical to those copied from a box.
+
+```bash
+nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"
+AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfile.bit nix-shell --run ./build.sh
+```
 
 ## Layout
 

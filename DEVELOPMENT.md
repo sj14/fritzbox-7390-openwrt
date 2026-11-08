@@ -235,7 +235,7 @@ All work so far was done without a console. The kernel writes its log to a reser
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] NAND (512 MB)
 - [ ] Measure the UART pins and connect the console
-- [ ] Download the proprietary files from AVM's public firmware image, so that a build doesn't need a copy from a box. `FRITZ.Box_Fon_WLAN_7390-06.88.image` from download.avm.de (SHA256 `35cf96b6d9417c46bdf227a7b2beb0d9c39df0c9dc6eff6c39c30c9c27819ae5`) is a tar, whose `var/tmp/kernel.image` holds the kernel and at `0x15a500` the root file system as AVM's squashfs 3.76, big endian. `sasquatch -be -s` reads its superblock, but listing it fails at the fragment table, so it probably needs Freetz's squashfs 3 tools with AVM's changes.
+- [x] Download the proprietary files from AVM's public firmware image, so that a build doesn't need a copy from a box: `kernel/tools/fetch-avm-firmware.sh`. `FRITZ.Box_Fon_WLAN_7390-06.88.image` is a tar, whose `var/tmp/kernel.image` holds the kernel and at `0x15a500` the root file system as AVM's squashfs 3.76, big endian, LZMA. `sasquatch -be` read only its superblock. Freetz's squashfs 3.4 with its patches (`kernel/unsquashfs-avm.nix`) recognized it, but read the fragment table from a wrong place: AVM's metadata (all tables and the fragment index entries) lies 256 bytes behind where the superblock and the index point, while the data blocks lie where the inodes say. With those pointers raised by `0x100` (`kernel/tools/fix-avm-squashfs.py`), the bitstream and both modules came out byte for byte as copied from the box.
 - [ ] Find out what overwrites the RAM log: after two test runs of the flash image that ran for 10 minutes, Freetz found no log, after one of 4 minutes it did
 
 ## Sources
