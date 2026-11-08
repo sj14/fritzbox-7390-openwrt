@@ -20,6 +20,9 @@ PAGE_MASK = 0xfff
 CONNECT_TIMEOUT_S = 0.4
 COMMAND_TIMEOUT_S = 10
 DATA_TIMEOUT_S = 120
+FLASH_TIMEOUT_S = 600
+# mtd1 in EVA, 0x20000 to 0xf00000 in flash. The bootloader and tffs lie outside.
+FIRMWARE_AREA_SIZE = 0xee0000
 RETRY_DELAY_S = 0.05
 
 
@@ -72,6 +75,24 @@ def load_image(ftp: FTP, image_path: str) -> None:
     print(f"uploaded {size} bytes in {time.monotonic() - upload_start:.1f} s", flush=True)
 
 
+def flash_image(ftp: FTP, image_path: str) -> None:
+    """Writes the image to the area where EVA starts the firmware, like Freetz's
+    push_firmware. EVA erases and writes while the upload runs, so it takes
+    longer than a load into RAM."""
+    size = os.stat(image_path).st_size
+    if size > FIRMWARE_AREA_SIZE:
+        raise RuntimeError(f"{size} bytes don't fit into the firmware area")
+
+    adam_command(ftp, "MEDIA FLSH")
+    ftp.set_pasv(True)
+    ftp.sock.settimeout(FLASH_TIMEOUT_S)
+    ftp.timeout = FLASH_TIMEOUT_S
+    upload_start = time.monotonic()
+    with open(image_path, "rb") as image:
+        print(ftp.storbinary("STOR mtd1", image), flush=True)
+    print(f"flashed {size} bytes in {time.monotonic() - upload_start:.1f} s", flush=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("address")
@@ -80,6 +101,8 @@ def main() -> None:
     commands.add_parser("reboot", help="leave EVA and boot the installed firmware")
     load_command = commands.add_parser("load", help="load and start a kernel image")
     load_command.add_argument("image")
+    flash_command = commands.add_parser("flash", help="write a flash image and start it")
+    flash_command.add_argument("image")
     args = parser.parse_args()
 
     ftp = wait_for_eva(args.address, args.wait)
@@ -90,9 +113,13 @@ def main() -> None:
         return
 
     try:
-        load_image(ftp, args.image)
+        if args.command == "flash":
+            flash_image(ftp, args.image)
+            request_reboot(ftp)
+        else:
+            load_image(ftp, args.image)
     except (OSError, EOFError, RuntimeError, socket.error) as error:
-        print(f"loading failed: {error!r}", file=sys.stderr, flush=True)
+        print(f"{args.command} failed: {error!r}", file=sys.stderr, flush=True)
         request_reboot(ftp)
         raise SystemExit(1)
 

@@ -12,10 +12,13 @@ current_access_point() {
     nmcli -f IN-USE,BSSID dev wifi list --rescan no | awk '$1 == "*" { print $2 }'
 }
 
-# Usage: eva_load <image> <work directory>. Returns once EVA started the image.
-eva_load() {
-    local image=$1
-    local work=$2
+# Usage: eva_start <load|flash> <image> <work directory>. Restarts the box into
+# EVA, which then loads the image into RAM or writes it to flash, and returns once
+# EVA started the image.
+eva_start() {
+    local command=$1
+    local image=$2
+    local work=$3
     local loader attempt second
 
     if ! command -v python3 > /dev/null; then
@@ -46,7 +49,7 @@ eva_load() {
         sleep 2
     fi
 
-    python3 -I "$EVA_TOOLS/eva-ramboot.py" --wait 200 "$EVA_ADDRESS" load "$image" > "$work/load.log" 2>&1 &
+    python3 -I "$EVA_TOOLS/eva-ramboot.py" --wait 200 "$EVA_ADDRESS" "$command" "$image" > "$work/load.log" 2>&1 &
     loader=$!
     sleep 1
     # Freetz sometimes ignores /sbin/reboot, so repeat it while the box is up.
@@ -58,6 +61,17 @@ eva_load() {
             sleep 1
         done
     done
-    wait "$loader" || { echo "loading failed:"; tail -3 "$work/load.log"; return 2; }
-    echo "loaded: $(tail -1 "$work/load.log")"
+    wait "$loader" || { echo "$command failed:"; tail -3 "$work/load.log"; return 2; }
+    echo "$command: $(tail -1 "$work/load.log")"
+}
+
+# Usage: eva_load <image> <work directory>
+eva_load() {
+    eva_start load "$@"
+}
+
+# Usage: eva_flash <flash image> <work directory>. Writes the area where EVA starts
+# the firmware, never the bootloader or the settings.
+eva_flash() {
+    eva_start flash "$@"
 }
