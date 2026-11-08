@@ -106,7 +106,7 @@ Procedure, from a machine with an address in `192.168.178.0/24` that reaches the
 
 Requires the serial console. The kernel itself is only loaded into RAM, but `tools/eva-ramboot.py` also runs `SETENV memsize` and `SETENV kernel_args_tmp`. Whether those values persist in the flash environment is unconfirmed, so compare `memsize` with the backup afterwards (normally `0x08000000`).
 
-1. Connect the console and read along at 115200 baud (see the main document).
+1. Connect the console and read along at 115200 baud (see DEVELOPMENT.md).
 2. Connect a PC directly to a LAN port and give it an address such as `192.168.178.2/24`. EVA listens on `192.168.178.1` according to the environment.
 3. Power-cycle the box and run this within the first seconds:
 

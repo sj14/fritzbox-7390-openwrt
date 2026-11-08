@@ -7,7 +7,7 @@
  * processor passes packets between the wire, buffers and queues in RAM.
  *
  * The register layout and configuration blocks were worked out from AVM's
- * firmware, see the project document. The firmware itself comes from AVM's
+ * firmware, see DEVELOPMENT.md. The firmware itself comes from AVM's
  * modules, see tools/extract-ap-firmware.py.
  */
 

@@ -1,14 +1,12 @@
-# OpenWrt on the FRITZ!Box 7390 (hobby project)
+# Development notes
 
-As of 2026-11-08. A current kernel with OpenWrt 25.12 boots from RAM on the box and works as an access point at the speed of the AVM firmware. The installed firmware is unchanged.
+What was found out while porting Linux 6.18 and OpenWrt to the FRITZ!Box 7390, and how the image is tested. How to build it is in `kernel/README.md`. As of 2026-11-08.
 
 ## Summary
 
-- **Goal:** a current kernel and OpenWrt on my own 7390, as a hobby project.
-- **Realistic:** a box with Wi-Fi (`ath9k`) and USB Ethernet as the uplink.
+- **State:** A current kernel with OpenWrt 25.12 boots from RAM on the box and works as an access point at the speed of the AVM firmware, with all four LAN ports, both radios, WPA3 and switchable LEDs. The installed firmware is unchanged.
+- **Next step:** install the flash image, see Installing. It already booted from RAM.
 - **Not realistic:** official inclusion in OpenWrt as it stands, because the Ethernet driver needs proprietary firmware from AVM's modules.
-- **Open decision:** Is "Wi-Fi plus USB Ethernet, LAN ports dead for now" acceptable as the goal?
-- **Next step:** install OpenWrt to flash, see Installing. The Wi-Fi reaches the speed of the AVM firmware (80 Mbit/s, the limit of the connection), see Throughput, also under OpenWrt. Open on the LAN side: the other ports and the data rate between them. The LAN port works, see the Ethernet section. Linux only runs from RAM so far, installing it would mean writing to flash. Before the first flash, check that the original AVM image still boots from RAM through EVA, so that comparison runs stay possible.
 
 ## The box
 
@@ -42,20 +40,22 @@ mtd5  01000000  reserved
 mtd6  20000000  nand-filesystem
 ```
 
-## What exists and what is missing
+## Parts of the port
 
-This is based on AVM's newest GPL package (06.86). The box runs 06.88.
+The starting point was AVM's newest GPL package (06.86, the box runs 06.88), which has open sources for 2.6.28 for everything except Ethernet.
 
-| Part | Status | Evidence |
+| Part | State | Where |
 |---|---|---|
-| IRQ, timer, clock, GPIO, setup | open, for 2.6.28 | `arch/mips/fusiv/fusiv_mips32/`, registers in `arch/mips/include/asm/mach-fusiv/vx180.h` |
-| Serial console | open | `setup.c`, `fusiv_uart.h` |
-| PCI | open | `arch/mips/pci/pci-fusiv.c` |
-| NAND and NOR | open | `drivers/mtd/nand/direct_avm.c`, `fusiv_mtd.c` |
-| USB | open | `drivers/usb/host/ehci-ikf*.c`, `ohci-ikf*.c`; matching variant not checked yet |
-| Wi-Fi | very likely feasible | `ath9k_pci_owl_loader` in the current kernel knows `0xff1d` |
-| Ethernet | **closed** | `ethdriver_lkm.ko`: `license=proprietary`, `author=Ikanos Communications` |
-| VDSL, telephony, DECT | not planned | probably not needed when used as an access point |
+| IRQ, timer, early console, reset | works | `kernel/linux/arch/mips/fusiv/` (`prom.c`, `irq.c`) |
+| PCI | works | patch 0002 |
+| NOR flash | works, read only | device tree (`mtd-rom`) |
+| NAND (512 MB) | open | AVM's `drivers/mtd/nand/direct_avm.c` |
+| USB | works, needs the FPGA for power | `usb.c`, FPGA loaded by `/init` |
+| Wi-Fi | works | `ath9k` with calibration from flash, patches 0003, 0006 to 0008 |
+| Ethernet and switch | works with AVM's firmware for the packet processors | `eth.c`, switch setup in `kernel/initramfs/board.c` |
+| GPIOs 16 to 31, LEDs | works | `gpio.c`, device tree |
+| Buttons | open | GPIOs 29 (DECT) and 31 (WLAN) |
+| VDSL, telephony, DECT | not planned | closed AVM drivers, not needed for an access point |
 
 ### Throughput
 
@@ -92,6 +92,8 @@ Tried without a measurable effect: `-Os` (slower, 50-53 Mbit/s), four OpenWrt pa
 - **All four LAN sockets (2026-11-08):** Under OpenWrt from RAM, the cable to the home network was moved from socket to socket while `tools/fusiv-links.c` watched the PHYs. Each socket negotiated 1000 Mbit/s full duplex, and through each one the box stayed reachable over SSH and reached the home router. LAN 1 is PHY 0, LAN 2 is PHY 1, LAN 3 is PHY 2 and LAN 4 is PHY 3. PHY 4 never had a link. The data rate between two sockets is still not measured: a laptop with a USB-C Ethernet adapter showed no network device under Linux, so a second wired device is still missing.
 - **Open:** The MAC address of `lan0` is random. Link speeds other than the current one are not handled.
 - **Switch reached (2026-11-07):** `/init` releases the switch from reset (GPIO 15, active low) and reads it over MDIO at `0x19110080`. It reports id `0x1001`, and the PHYs report `0x004d 0xd041`. PHY 3 lost its link when the cable to the home network was pulled and got it back when it was plugged in again. It is LAN 4. See `hardware/first-switch-6.18.log` and `hardware/first-link-change-6.18.log`.
+
+What AVM's sources showed before `eth.c` existed:
 
 - `fusiv_src/` contains only headers and Makefiles (the only `.c` file is `fusiv_srcd.c`).
 - Packets pass through a network coprocessor. Its firmware is probably `ETHAP_codeSection` (11,236 bytes) in the module, loaded via `loadAPCode` from `fusivlib_lkm`.
@@ -131,6 +133,7 @@ Calibration data, found read-only in the `urlader` partition (`mtd2`):
 3. **USB Ethernet as uplink (reached):** The USB port needs the board's FPGA for power, and `/init` loads it. Wi-Fi clients reach the internet through a bridge to an AX88179 adapter (`hardware/first-bridged-access-point-6.18.log`).
 4. **LAN port (reached):** `lan0` works through the packet processors, see Ethernet.
 5. **OpenWrt (reached from RAM, 2026-11-08):** OpenWrt 25.12 with LuCI from the ImageBuilder for `ath79`, with this kernel, see `kernel/README.md`. From RAM the box came up as an access point at `192.168.0.250` after about 2 minutes, answered over SSH and LuCI, and a laptop on the 2.4 GHz network downloaded at 70-81 Mbit/s. Problems on the way: `wifi-scripts` and `iw` come only with `kmod-ath9k`, OpenWrt 25.12 switches Wi-Fi networks off in `wifi-iface` instead of `wifi-device`, and without `CONFIG_BRIDGE_VLAN_FILTERING` the kernel refuses netifd's bridge settings, so `br-lan` never appeared.
+6. **Installed OpenWrt (flash image works from RAM, 2026-11-08):** see Installing.
 
 The kernel work is in `kernel/`, including how to test it without a console.
 
@@ -142,7 +145,7 @@ The box is unavailable as an access point during tests, so a second, used 7390 a
 
 ### Installing (prepared, not done yet)
 
-EVA boots from the area it calls `mtd1` (`0x9F020000`-`0x9FF00000`, 14.875 MB). The AVM firmware keeps its kernel and its root file system there one after the other; under Freetz they appear as `mtd1` ("kernel", `0x15a500` bytes) and `mtd0` ("rootfs", `0xd85b00` bytes). An EVA image such as `kernel/build/fritzbox-7390.eva` is written there over EVA's FTP with `MEDIA FLSH`, `STOR mtd1` and `REBOOT`, the same way as Freetz's `tools/push_firmware`. The bootloader (`urlader`, `mtd2`) and the settings (`tffs`, `mtd3` and `mtd4`) are never written.
+EVA boots from the area it calls `mtd1` (`0x9F020000`-`0x9FF00000`, 14.875 MB). The AVM firmware keeps its kernel and its root file system there one after the other; under Freetz they appear as `mtd1` ("kernel", `0x15a500` bytes) and `mtd0` ("rootfs", `0xd85b00` bytes). The flash image `kernel/build/fritzbox-7390-flash.bin` is written there over EVA's FTP with `MEDIA FLSH`, `STOR mtd1` and `REBOOT`, the same way as Freetz's `tools/push_firmware`. The bootloader (`urlader`, `mtd2`) and the settings (`tffs`, `mtd3` and `mtd4`) are never written.
 
 Before the first flash:
 
@@ -160,11 +163,11 @@ Rescue paths after an install:
 
 An installed image needs `TEST_DURATION_S=0`, otherwise `/init` restarts the box after each test period.
 
-Planned layout of an installed OpenWrt, not built yet:
+Layout of an installed OpenWrt (`FLASH_IMAGE=1` in `kernel/build.sh`). On 2026-11-08 the complete flash image booted from RAM, came up as an access point with SSH and LuCI, and returned to Freetz:
 
-1. The EVA image of the kernel without the OpenWrt files at the start of `mtd1`, in a fixed partition of 4 MB, followed by the OpenWrt root file system as squashfs. The kernel needs the block layer, `mtdblock`, squashfs and overlayfs for that.
-2. Linux keeps the flash read only at first (`mtd-rom`), so settings live in RAM and every start begins with the defaults of the image. So the box can't damage its own flash. A writable `rootfs_data` partition with jffs2, and with it saved settings and `sysupgrade`, needs a flash driver that can write (CFI) and comes as a second step.
-3. Before the first flash, the same image can be tested from RAM: EVA passes the uploaded area as `mtdram1=start,end`, and if the kernel registers that area as an MTD device with the same partitions, the complete flash image boots from RAM, the same way the AVM firmware uses `kernel_ram` and `rootfs_ram`.
+1. The EVA image of the kernel, with only `/init` in its initramfs, at the start of `mtd1` in a partition of 4 MB (`kernel`), followed by the OpenWrt root file system as squashfs (`rootfs`). The proprietary files (FPGA bitstream, firmware of the packet processors) are only in the squashfs. `/init` mounts the squashfs through `mtdblock` at `/rom`, puts a tmpfs over it with overlayfs (changes at `/overlay`), switches into it, loads the FPGA, sets up the switch and starts OpenWrt's init with `INITRAMFS=1`, so that preinit skips `mount_root`.
+2. Linux keeps the flash read only at first (`mtd-rom`), so every start begins with the defaults of the image, and the box can't damage its own flash. OpenWrt's `mount_root` can't set up the overlay here: with the squashfs on a block device it wanted a loop device behind the squashfs ("unable to create loop device"), left `/` read only, and the box came up without network configuration. A writable `rootfs_data` partition with jffs2, and with it saved settings and `sysupgrade`, needs a flash driver that can write (CFI) and comes as a second step.
+3. The same image is tested from RAM before it goes to flash: `tools/eva-ramboot.py` passes the uploaded area as `mtdram1=start,end`, and `arch/mips/fusiv/ramboot.c` registers it with `plat-ram` as `kernel_ram` and `rootfs_ram`, the names the AVM firmware uses. `/init` prefers `rootfs_ram`. `physmap` was tried first, but it rounds its window down to a power of two, so 7.2 MB became 4 MB and `rootfs_ram` was cut off.
 
 ## Serial console
 
@@ -216,29 +219,18 @@ Garbled characters or a silent phase right after power-on may come from the boot
 
 ### Without a console
 
-In theory, the kernel can write its log to a reserved RAM area, which you read through `/dev/mem` after rebooting into Freetz. This is much slower and untested: the RAM would have to survive the reboot, and early crashes produce no output at all. With the Pi, this is not necessary.
+All work so far was done without a console. The kernel writes its log to a reserved RAM area, which `tools/fusiv-ramlog.c` reads under Freetz after the box restarted (see `kernel/README.md`). Early crashes before the log starts produce no output, and the LEDs show how far the boot got.
 
 ## Open items
 
-- [ ] Decision: goal "Wi-Fi plus USB Ethernet", or first estimate the effort for the LAN ports
-- [ ] Multimeter available?
-- [ ] Open the box and photograph the row of pads
+- [ ] Install the flash image
+- [ ] Saved settings: a writable `rootfs_data` partition, which needs a CFI flash driver
+- [ ] Data rate between two LAN sockets, which needs a second wired device
+- [ ] Buttons (WLAN, DECT) through `gpio-keys`
+- [ ] NAND (512 MB)
 - [ ] Measure the UART pins and connect the console
-- [x] Test the EVA RAM boot on the 7390
-- [x] Find where the Wi-Fi calibration data is stored
-- [ ] Determine the matching USB driver variant for the Vx180
-- [x] Back up clock and GPIO registers (`hardware/registers-hw156.txt`, read with `tools/fusiv-regdump.c`)
-- [x] Set up the groundwork for the current kernel (`kernel/`, compiles, untested on hardware)
-
-## Limitations of this check
-
-- The GPL sources were checked for existing files and dependencies and only spot-read. Nothing has been compiled yet.
-- The effort estimate of several months for an experienced person is a rough guess.
-- The forum information (Vx180, Wi-Fi chips, switch) dates from 2019 and is only partly confirmed by the box.
-
-## Alternative without porting
-
-If it is only about current updates and faster Wi-Fi, a used device with OpenWrt support is far less effort, for example a FRITZ!Box 7530 (from memory; check the OpenWrt device list before buying, including the Wi-Fi status).
+- [ ] Download the proprietary files from AVM's public firmware image, so that a build doesn't need a copy from a box
+- [ ] Find out what overwrites the RAM log: after two test runs of the flash image that ran for 10 minutes, Freetz found no log, after one of 4 minutes it did
 
 ## Sources
 
