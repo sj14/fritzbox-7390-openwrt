@@ -15,7 +15,7 @@ This is an unofficial hobby project, tested on one box only. It is not affiliate
 | LAN sockets 1 to 4 | work at 1 Gbit/s; the speed between two sockets is not measured yet |
 | Web interface (LuCI) and SSH | work |
 | LEDs | can be switched off or set in LuCI under System, LED Configuration |
-| USB | works, tested with a USB Ethernet adapter |
+| USB | works, tested with a USB Ethernet adapter; needs the FPGA bitstream, which also lights a red LED inside the box, so leave it out if you don't use USB |
 | Saved settings | work, in 4.9 MB of flash (jffs2), which also holds installed packages |
 | Updates (`sysupgrade`, also in LuCI) | work, and keep the settings |
 

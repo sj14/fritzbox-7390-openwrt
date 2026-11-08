@@ -8,7 +8,7 @@ Groundwork for milestone 1: a current kernel that boots from RAM to a first user
 
 The image needs files from AVM's firmware, which must not be published:
 
-- `BITFILE`: the FPGA bitstream, which powers the USB port.
+- `BITFILE`, optional: the FPGA bitstream, which powers the USB port. Once loaded, the FPGA also lights a red LED inside the box, because nothing sets up the telephony behind it as AVM's driver does. Leave it out if you don't need USB.
 - `AP_FIRMWARE_DIR`: `fusiv-bmu.bin` and `fusiv-eth.bin`, written by `../tools/extract-ap-firmware.py` from `fusivlib_lkm.ko` (prefix `BMUAP`) and `ethdriver_lkm.ko` (prefix `ETHAP`).
 
 Without the second one, `lan0` can't start and the box has no network at all, so `build.sh` stops without it.
@@ -161,7 +161,7 @@ The USB port only gets power after the board's Xilinx FPGA (Spartan XC3S250E) is
 AP_FIRMWARE_DIR=/path/to/ap-firmware BITFILE=/path/to/bitfile.bit nix-shell --run ./build.sh
 ```
 
-Without `BITFILE` the image builds and runs as before, but USB has no power.
+Without `BITFILE` the image builds and runs as before, but USB has no power, and the red LED inside the box stays off.
 
 `usbcore.autosuspend=-1` is also needed, because the controller otherwise stops with the root hub suspended.
 
