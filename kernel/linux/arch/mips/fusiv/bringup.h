@@ -2,6 +2,8 @@
 #ifndef _FUSIV_BRINGUP_H
 #define _FUSIV_BRINGUP_H
 
+#include <linux/types.h>
+
 /* The AVM reboot status text, which survives a software reset. */
 #define FUSIV_MAILBOX_PHYS	0x00fffe00
 #define FUSIV_MAILBOX_SIZE	512
@@ -19,7 +21,11 @@ enum bringup_stage {
 	STAGE_RESTART,
 };
 
-void bringup_init(void);
+/*
+ * write_log is false for a kernel started from flash, so that it keeps the RAM log
+ * of a test kernel that EVA started from RAM before it.
+ */
+void bringup_init(bool write_log);
 void bringup_set_stage(enum bringup_stage stage);
 void bringup_log_char(char c);
 void bringup_mark_ram(void);

@@ -128,9 +128,10 @@ static void fusiv_restart(char *command)
 
 void __init prom_init(void)
 {
-	bringup_init();
-
+	/* tools/eva-ramboot.py passes mtdram1= when it starts an image from RAM. */
 	init_cmdline();
+	bringup_init(strstr(arcs_cmdline, "mtdram1=") != NULL);
+
 	init_memory();
 }
 

@@ -3,7 +3,9 @@
  * Debugging aids for bringing up the kernel without a serial console:
  *
  * - All kernel messages go to a RAM log, which survives a software reset.
- *   tools/fusiv-ramlog.c reads it after the box is back in the AVM firmware.
+ *   tools/fusiv-ramlog.c reads it after the box is back in the installed
+ *   firmware. Only a kernel that EVA started from RAM writes it, so that an
+ *   installed OpenWrt keeps the log of the test before it.
  * - The LEDs show how far the boot got.
  * - The hardware watchdog restarts the box if the kernel hangs.
  * - A kernel timer serves the watchdog, so that it only fires when the kernel
@@ -73,6 +75,7 @@
 #define LED_INTERNET		BIT(28 - 16)
 
 static u32 ramlog_length;
+static bool ramlog_enabled;
 static struct timer_list wdt_timer;
 
 static void led_on(u16 led)
@@ -107,7 +110,7 @@ void bringup_log_char(char c)
 {
 	void __iomem *base = (void __iomem *)RAMLOG_BASE;
 
-	if (ramlog_length >= RAMLOG_CAPACITY)
+	if (!ramlog_enabled || ramlog_length >= RAMLOG_CAPACITY)
 		return;
 
 	__raw_writeb(c, base + RAMLOG_DATA_OFFSET + ramlog_length);
@@ -117,7 +120,8 @@ void bringup_log_char(char c)
 
 void bringup_set_stage(enum bringup_stage stage)
 {
-	__raw_writel(stage, (void __iomem *)(RAMLOG_BASE + RAMLOG_STAGE_OFFSET));
+	if (ramlog_enabled)
+		__raw_writel(stage, (void __iomem *)(RAMLOG_BASE + RAMLOG_STAGE_OFFSET));
 
 	switch (stage) {
 	case STAGE_PROM_INIT:
@@ -168,10 +172,12 @@ static void wdt_start(void)
 	__raw_writel(WDT_CTRL_SERVICE | WDT_CTRL_RELOAD_MAX, ctrl);
 }
 
-void bringup_init(void)
+void bringup_init(bool write_log)
 {
 	mailbox_write(STATUS_POWERON);
-	ramlog_init();
+	ramlog_enabled = write_log;
+	if (write_log)
+		ramlog_init();
 	bringup_set_stage(STAGE_PROM_INIT);
 	wdt_start();
 }
