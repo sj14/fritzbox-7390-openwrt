@@ -2,7 +2,7 @@
 
 A current Linux kernel (6.18) and OpenWrt 25.12 for the AVM FRITZ!Box Fon WLAN 7390, for use as an access point and switch behind an existing router. Unlike the AVM firmware, whose last update (06.88) is from 2023, it gets OpenWrt's security updates and its packages and settings, for example VLANs, several Wi-Fi networks or a guest network.
 
-> **Not ready to install yet.** The image runs on a real box when started from RAM, which leaves the installed AVM firmware untouched. The version for the flash is being tested. This page will describe how to install it once that has been done on a box.
+> **Early state.** The image is installed and runs on one box since 2026-11-08, but settings are not saved yet, and the steps to install it are not written up for others yet.
 
 This is an unofficial hobby project, tested on one box only. It is not affiliated with AVM or the OpenWrt project.
 

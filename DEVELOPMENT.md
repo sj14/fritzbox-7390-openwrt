@@ -4,8 +4,9 @@ What was found out while porting Linux 6.18 and OpenWrt to the FRITZ!Box 7390, a
 
 ## Summary
 
-- **State:** A current kernel with OpenWrt 25.12 boots from RAM on the box and works as an access point at the speed of the AVM firmware, with all four LAN ports, both radios, WPA3 and switchable LEDs. The installed firmware is unchanged.
-- **Next step:** install the flash image, see Installing. It already booted from RAM.
+- **State:** A current kernel with OpenWrt 25.12 boots from RAM on the box and works as an access point at the speed of the AVM firmware, with all four LAN ports, both radios, WPA3 and switchable LEDs.
+- **Installed:** since 2026-11-08 OpenWrt runs from flash on the box, see Installing.
+- **Next step:** saved settings, which need a flash driver that can write.
 - **Not realistic:** official inclusion in OpenWrt as it stands, because the Ethernet driver needs proprietary firmware from AVM's modules.
 
 ## The box
@@ -133,7 +134,7 @@ Calibration data, found read-only in the `urlader` partition (`mtd2`):
 3. **USB Ethernet as uplink (reached):** The USB port needs the board's FPGA for power, and `/init` loads it. Wi-Fi clients reach the internet through a bridge to an AX88179 adapter (`hardware/first-bridged-access-point-6.18.log`).
 4. **LAN port (reached):** `lan0` works through the packet processors, see Ethernet.
 5. **OpenWrt (reached from RAM, 2026-11-08):** OpenWrt 25.12 with LuCI from the ImageBuilder for `ath79`, with this kernel, see `kernel/README.md`. From RAM the box came up as an access point at `192.168.0.250` after about 2 minutes, answered over SSH and LuCI, and a laptop on the 2.4 GHz network downloaded at 70-81 Mbit/s. Problems on the way: `wifi-scripts` and `iw` come only with `kmod-ath9k`, OpenWrt 25.12 switches Wi-Fi networks off in `wifi-iface` instead of `wifi-device`, and without `CONFIG_BRIDGE_VLAN_FILTERING` the kernel refuses netifd's bridge settings, so `br-lan` never appeared.
-6. **Installed OpenWrt (flash image works from RAM, 2026-11-08):** see Installing.
+6. **Installed OpenWrt (reached, 2026-11-08):** the flash image runs from flash, see Installing. Settings are not saved yet.
 
 The kernel work is in `kernel/`, including how to test it without a console.
 
@@ -143,7 +144,7 @@ An image can be loaded into RAM through EVA via FTP, the same way as OpenWrt's `
 
 The box is unavailable as an access point during tests, so a second, used 7390 as a test device would be helpful.
 
-### Installing (first attempt failed, see below)
+### Installing (works, 2026-11-08)
 
 EVA boots from the area it calls `mtd1` (`0x9F020000`-`0x9FF00000`, 14.875 MB). The AVM firmware keeps its kernel and its root file system there one after the other; under Freetz they appear as `mtd1` ("kernel", `0x15a500` bytes) and `mtd0` ("rootfs", `0xd85b00` bytes). The flash image `kernel/build/fritzbox-7390-flash.bin` is written there over EVA's FTP with `MEDIA FLSH`, `STOR mtd1` and `REBOOT`, the same way as Freetz's `tools/push_firmware`. The bootloader (`urlader`, `mtd2`) and the settings (`tffs`, `mtd3` and `mtd4`) are never written.
 
@@ -163,7 +164,7 @@ Rescue paths after an install:
 
 An installed image needs `TEST_DURATION_S=0`, otherwise `/init` restarts the box after each test period.
 
-**First attempt (2026-11-08):** `tools/eva-ramboot.py flash` wrote the flash image in 45 to 80 s, and EVA confirmed it. But at the next start EVA stayed in the bootloader instead of starting the kernel, also after appending the TI checksum that ends AVM's image (`0xc453de23` and the inverted POSIX `cksum` of everything before it, both little endian, checked against the backup, where it sits at `0xed4500`). Writing the backup back the same way restored Freetz. The image booted fine from RAM, so EVA checks more when it starts from flash. The likely reason: AVM's images, and OpenWrt's for other AVM boards, have a squashfs right after the kernel, and the first image had only padding there. OpenWrt adds a dummy squashfs of 256 bytes (`eva.dummy.squashfs`) after the kernel, padded to 64 KB, and appends no TI checksum. `build.sh` now does the same. Whether EVA boots it from flash is not tested yet.
+**First attempt (2026-11-08):** `tools/eva-ramboot.py flash` wrote the flash image in 45 to 80 s, and EVA confirmed it. But at the next start EVA stayed in the bootloader instead of starting the kernel, also after appending the TI checksum that ends AVM's image (`0xc453de23` and the inverted POSIX `cksum` of everything before it, both little endian, checked against the backup, where it sits at `0xed4500`). Writing the backup back the same way restored Freetz. The image booted fine from RAM, so EVA checks more when it starts from flash. The likely reason: AVM's images, and OpenWrt's for other AVM boards, have a squashfs right after the kernel, and the first image had only padding there. OpenWrt adds a dummy squashfs of 256 bytes (`eva.dummy.squashfs`) after the kernel, padded to 64 KB, and appends no TI checksum. `build.sh` now does the same. The second attempt on the same day booted: EVA started the kernel from flash, `/init` mounted `/dev/mtdblock2` (`rootfs`), and OpenWrt came up with SSH after 135 s, the LAN at `192.168.0.250` and both radios.
 
 Layout of an installed OpenWrt (`FLASH_IMAGE=1` in `kernel/build.sh`). On 2026-11-08 the complete flash image booted from RAM, came up as an access point with SSH and LuCI, and returned to Freetz:
 
@@ -225,7 +226,8 @@ All work so far was done without a console. The kernel writes its log to a reser
 
 ## Open items
 
-- [ ] Install the flash image
+- [x] Install the flash image
+- [ ] Test scripts for a box that runs OpenWrt instead of Freetz (restart into EVA over SSH)
 - [ ] Saved settings: a writable `rootfs_data` partition, which needs a CFI flash driver
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
