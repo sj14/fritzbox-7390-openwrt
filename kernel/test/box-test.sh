@@ -15,19 +15,10 @@ TEST_DIR=$(cd "$(dirname "$0")" && pwd)
 IMAGE=$1
 LOG=$2
 : "${RAMLOG_TOOL:?set RAMLOG_TOOL to fusiv-ramlog built for the box}"
-WORK=$(mktemp -d)
-WORK_FILES="uptime.sh radio-off.sh reboot.sh load.log part.sh part.txt"
-remove_work_files() {
-    for file in $WORK_FILES; do
-        rm -f "$WORK/$file"
-    done
-    rmdir "$WORK"
-}
-trap remove_work_files EXIT
 
-eva_load "$IMAGE" "$WORK" || exit $?
+eva_load "$IMAGE" "$TEST_WORK_DIR" || exit $?
 
 freetz_wait "${FREETZ_WAIT:-600}" || { echo "Freetz did not come back"; exit 3; }
 echo "Freetz is back"
 
-freetz_read_ramlog "$RAMLOG_TOOL" "$LOG" "$WORK"
+freetz_read_ramlog "$RAMLOG_TOOL" "$LOG" "$TEST_WORK_DIR"

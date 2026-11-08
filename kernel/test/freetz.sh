@@ -4,6 +4,11 @@
 FREETZ_URL=${FREETZ_URL:-http://192.168.0.2:81}
 : "${FREETZ_AUTH:?set FREETZ_AUTH to user:password of the Freetz web interface}"
 
+# The scripts write their small work files here and overwrite them in the next
+# run, so nothing has to be deleted. build/ stays out of the repository.
+TEST_WORK_DIR=${TEST_WORK_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/build/test-work}
+mkdir -p "$TEST_WORK_DIR"
+
 # The shell page hands out a token for each command.
 freetz_token() {
     curl -s --max-time 30 -u "$FREETZ_AUTH" "$FREETZ_URL/cgi-bin/shell/index.cgi" \

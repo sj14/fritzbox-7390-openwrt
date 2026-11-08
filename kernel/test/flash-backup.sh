@@ -11,8 +11,7 @@ PARTITION=$1
 SIZE=$2
 OUT=$3
 PIECE=32768
-SCRIPT=$(mktemp)
-trap 'rm -f "$SCRIPT"' EXIT
+SCRIPT=$TEST_WORK_DIR/flash-backup-piece.sh
 
 : > "$OUT"
 pieces=$(( (SIZE + PIECE - 1) / PIECE ))

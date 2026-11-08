@@ -14,22 +14,13 @@ IMAGE=$1
 KEY=$2
 OUT=$3
 OPENWRT_ADDRESS=192.168.0.250
-WORK=$(mktemp -d)
-WORK_FILES="uptime.sh radio-off.sh reboot.sh load.log"
-remove_work_files() {
-    for file in $WORK_FILES; do
-        rm -f "$WORK/$file"
-    done
-    rmdir "$WORK"
-}
-trap remove_work_files EXIT
 
 openwrt() {
     ssh -i "$KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
         -o ConnectTimeout=5 -o BatchMode=yes "root@$OPENWRT_ADDRESS" "$@"
 }
 
-eva_load "$IMAGE" "$WORK" || exit $?
+eva_load "$IMAGE" "$TEST_WORK_DIR" || exit $?
 
 start=$(date +%s)
 until openwrt true 2> /dev/null; do
