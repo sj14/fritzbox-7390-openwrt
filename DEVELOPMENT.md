@@ -6,7 +6,7 @@ What was found out while porting Linux 6.18 and OpenWrt to the FRITZ!Box 7390, a
 
 - **State:** A current kernel with OpenWrt 25.12 boots from RAM on the box and works as an access point at the speed of the AVM firmware, with all four LAN ports, both radios, WPA3 and switchable LEDs.
 - **Installed:** since 2026-11-08 OpenWrt runs from flash on the box, see Installing.
-- **Next step:** `sysupgrade`, and the proprietary files from AVM's public image for a CI build.
+- **Next step:** open items below; the main features work.
 - **Not realistic:** official inclusion in OpenWrt as it stands, because the Ethernet driver needs proprietary firmware from AVM's modules.
 
 ## The box
@@ -229,7 +229,7 @@ All work so far was done without a console. The kernel writes its log to a reser
 - [x] Install the flash image
 - [x] Test scripts for a box that runs OpenWrt instead of Freetz (`test/box.sh`, restart into EVA over SSH)
 - [x] Saved settings: the writable `rootfs_data` partition, see Installing. Linux detects the chip through CFI (2026-11-08, from RAM): Macronix, manufacturer ID `0xc2`, chip ID `0x227e` (MX29GL family, 16 MB), one x16 chip with the AMD command set, extended query 1.3, uniform erase blocks of 128 KB, so `urlader` is exactly the first block. AVM's kernel uses the same driver (`CONFIG_MTD_CFI_AMDSTD`, bank width 2)
-- [ ] `sysupgrade`: prepared (firmware partition over kernel, rootfs and rootfs_data; `kernel/openwrt/files/lib/upgrade/platform.sh` checks the EVA header and the size and writes the flash image with `mtd -j`, which puts the saved settings behind the mark). From RAM, `sysupgrade -T` accepted the image and refused a damaged one. A real upgrade is not tested yet
+- [x] `sysupgrade` (2026-11-08): a firmware partition over kernel, rootfs and rootfs_data; `kernel/openwrt/files/lib/upgrade/platform.sh` checks the EVA header and the size and writes the flash image with `mtd -j`, which puts the saved settings behind the mark. `sysupgrade -T` refused a damaged image. A real sysupgrade on the box kept the Wi-Fi settings and the SSH host key, after `openwrt/uci-defaults-test` learned to skip a box that it set up before: OpenWrt runs uci-defaults again after each sysupgrade, and the first attempt reset the test networks over the restored settings
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] NAND (512 MB)

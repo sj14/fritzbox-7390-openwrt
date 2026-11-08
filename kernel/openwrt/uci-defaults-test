@@ -1,6 +1,10 @@
 # Settings for the test image, applied once at the first start. The box joins the
 # home network as an access point: a fixed address, no DHCP server of its own.
 # build.sh fills in the passwords, which stay out of the repository.
+#
+# OpenWrt runs it again after each sysupgrade, once the saved settings are back,
+# so it leaves a box alone that it set up before.
+[ "$(uci -q get system.@system[0].test_defaults)" = 1 ] && exit 0
 
 uci batch <<SETTINGS
 set network.lan.proto='static'
@@ -13,6 +17,7 @@ set dhcp.lan.dhcpv6='disabled'
 set dhcp.lan.ra='disabled'
 # /init copies this file to the kernel log before the test image restarts.
 set system.@system[0].log_file='/tmp/openwrt.log'
+set system.@system[0].test_defaults='1'
 SETTINGS
 
 for radio in $(uci show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"); do
