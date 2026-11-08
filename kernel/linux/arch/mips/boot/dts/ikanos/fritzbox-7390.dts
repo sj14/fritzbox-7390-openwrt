@@ -137,8 +137,8 @@
 
 		/*
 		 * An AMD style CFI chip, as in AVM's kernel (CONFIG_MTD_CFI_AMDSTD, 16 bit).
-		 * Only rootfs_data is writable. urlader, kernel and rootfs are read only,
-		 * and tffs is not listed, so Linux never erases or programs them.
+		 * Only rootfs_data and firmware (for sysupgrade) are writable. urlader is
+		 * read only and tffs is not listed, so Linux never erases or programs them.
 		 * The urlader partition also holds secrets in its environment, so its
 		 * content must stay out of logs. Only the calibration cells are used.
 		 */
@@ -195,6 +195,16 @@
 				partition@a20000 {
 					label = "rootfs_data";
 					reg = <0xa20000 0x4e0000>;
+				};
+
+				/*
+				 * The three partitions above as one, for sysupgrade
+				 * (openwrt/files/lib/upgrade/platform.sh). The only other
+				 * writable one.
+				 */
+				partition@20000-firmware {
+					label = "firmware";
+					reg = <0x20000 0xee0000>;
 				};
 			};
 		};

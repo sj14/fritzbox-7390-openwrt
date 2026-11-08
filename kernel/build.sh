@@ -127,6 +127,7 @@ else
     add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
     add_file /etc/board.d/01_leds "$SOURCE_DIR/openwrt/files/etc/board.d/01_leds" 755
     add_file /etc/board.d/02_network "$SOURCE_DIR/openwrt/files/etc/board.d/02_network" 755
+    add_file /lib/upgrade/platform.sh "$SOURCE_DIR/openwrt/files/lib/upgrade/platform.sh" 644
     add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
     # The initramfs has it as well, but cfg80211 reads it again after the switch
     # to the squashfs.

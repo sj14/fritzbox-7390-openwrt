@@ -230,7 +230,7 @@ All work so far was done without a console. The kernel writes its log to a reser
 - [x] Test scripts for a box that runs OpenWrt instead of Freetz (`test/box.sh`, restart into EVA over SSH)
 - [x] Saved settings: the writable `rootfs_data` partition, see Installing. Linux detects the chip through CFI (2026-11-08, from RAM): Macronix, manufacturer ID `0xc2`, chip ID `0x227e` (MX29GL family, 16 MB), one x16 chip with the AMD command set, extended query 1.3, uniform erase blocks of 128 KB, so `urlader` is exactly the first block. AVM's kernel uses the same driver (`CONFIG_MTD_CFI_AMDSTD`, bank width 2)
 - [ ] Find out why `mount_root` reports "failed to sync jffs2 overlay" at the first start
-- [ ] `sysupgrade`: an image format and a check for this board
+- [ ] `sysupgrade`: prepared (firmware partition over kernel, rootfs and rootfs_data; `kernel/openwrt/files/lib/upgrade/platform.sh` checks the EVA header and the size and writes the flash image with `mtd -j`, which puts the saved settings behind the mark). From RAM, `sysupgrade -T` accepted the image and refused a damaged one. A real upgrade is not tested yet
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] NAND (512 MB)
