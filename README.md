@@ -16,6 +16,7 @@ This is an unofficial hobby project, tested on one box only. It is not affiliate
 | Web interface (LuCI) and SSH | work |
 | LEDs | can be switched off or set in LuCI under System, LED Configuration |
 | USB | works, tested with a USB Ethernet adapter |
+| Saved settings | work, in 4.9 MB of flash (jffs2), which also holds installed packages |
 
 The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it can move about 130 Mbit/s between LAN and Wi-Fi.
 
@@ -25,7 +26,6 @@ The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it c
 |---|---|
 | DSL | not supported, there is no open driver, so the box only works behind another router |
 | Telephony (FON, ISDN, DECT) | not supported, there are no open drivers |
-| Saved settings | not yet: the first version keeps the flash read only, so every start begins with the settings of the image |
 | Updates from the web interface (`sysupgrade`) | not yet |
 | Internal storage (512 MB NAND) | not usable yet |
 | WLAN and DECT buttons | not set up yet |
