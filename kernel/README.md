@@ -23,12 +23,13 @@ Without the second one, `lan0` can't start and the box has no network at all, so
 | `linux/arch/mips/fusiv/bringup.c` | RAM log, LEDs, watchdog |
 | `linux/arch/mips/fusiv/eth.c` | LAN port through the packet processors |
 | `linux/arch/mips/fusiv/gpio.c` | GPIOs 16 to 31, for the LEDs |
+| `linux/arch/mips/fusiv/ramboot.c` | the image that EVA started from RAM as an MTD device, for testing the flash image |
 | `linux/net/bridge/br_fast_forward.c` | short path for IP packets between the LAN port and the radios, past the rest of the bridge |
 | `linux/arch/mips/boot/dts/ikanos/` | device tree |
 | `linux/arch/mips/configs/fusiv_defconfig` | kernel configuration |
 | `patches/` | the few changes to existing kernel files |
 | `initramfs/init.c` | first userspace program of a test image: creates the bridge, starts the access points and TCP test services, restarts after 180 s |
-| `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: prepares the hardware and starts OpenWrt's init |
+| `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: mounts the squashfs of a flash image, prepares the hardware and starts OpenWrt's init |
 | `initramfs/board.c` | shared by both: loads the FPGA, sets up the switch over MDIO, logs to the kernel log |
 | `openwrt/` | settings and files for the OpenWrt image |
 | `test/` | scripts for test runs from another machine, through Freetz and EVA |
@@ -60,6 +61,10 @@ With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of
 3. Run `OPENWRT_ROOTFS=<copy> SSH_PUBLIC_KEY=<public key> ./build.sh` with the other variables as for a test image. A key of its own for the test box, without a passphrase, works for unattended tests: `ssh-keygen -t ed25519 -N "" -f build/test-ssh-key`.
 
 `openwrt/uci-defaults-test` sets up the image as an access point in the home network on its first start: the LAN at `192.168.0.250` without a DHCP server of its own, both radios on with WPA2/WPA3 (`sae-mixed`) and the test networks' password. The root password is random as well, in `build/root-password`, and `SSH_PUBLIC_KEY` names a key for SSH. `openwrt/files/etc/board.d/02_network` puts `lan0` into the LAN bridge and takes its address from `maca` in the bootloader environment.
+
+### Flash image
+
+With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 4 MB, followed by the OpenWrt files as squashfs. It fills at most the firmware area of 14.875 MB, see "Installing" in `../DEVELOPMENT.md`. The same file can be tested from RAM first (`test/openwrt-test.sh`), where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
 
 ## What was tested
 

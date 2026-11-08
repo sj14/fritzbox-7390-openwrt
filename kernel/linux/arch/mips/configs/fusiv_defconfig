@@ -26,7 +26,6 @@ CONFIG_SERIAL_OF_PLATFORM=y
 CONFIG_PANIC_TIMEOUT=10
 CONFIG_MAGIC_SYSRQ=y
 # CONFIG_MODULES is not set
-# CONFIG_BLOCK is not set
 # CONFIG_SWAP is not set
 CONFIG_NET=y
 CONFIG_PACKET=y
@@ -49,6 +48,17 @@ CONFIG_MTD_ROM=y
 CONFIG_MTD_PHYSMAP=y
 CONFIG_MTD_PHYSMAP_OF=y
 CONFIG_NVMEM=y
+# The installed image: OpenWrt's root file system as squashfs in a flash
+# partition, with its changes in RAM (overlayfs on tmpfs). /init mounts it through
+# mtdblock and finds the device in devtmpfs. MTD_PLATRAM gives a flash image that
+# is tested from RAM the same partitions, see arch/mips/fusiv/ramboot.c.
+CONFIG_BLOCK=y
+CONFIG_MTD_BLOCK=y
+CONFIG_MTD_PLATRAM=y
+CONFIG_DEVTMPFS=y
+CONFIG_SQUASHFS=y
+CONFIG_SQUASHFS_XZ=y
+CONFIG_OVERLAY_FS=y
 CONFIG_USB_SUPPORT=y
 CONFIG_USB=y
 CONFIG_USB_EHCI_HCD=y

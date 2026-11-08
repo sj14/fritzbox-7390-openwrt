@@ -72,12 +72,38 @@ nod /dev/null 666 0 0 c 1 3
 nod /dev/urandom 444 0 0 c 1 9
 dir /proc 755 0 0
 dir /sys 755 0 0
+dir /newroot 755 0 0
+dir /rom 755 0 0
+dir /overlay 755 0 0
 dir /etc 755 0 0
 dir /lib 755 0 0
 dir /lib/firmware 755 0 0
 file /lib/firmware/regulatory.db $REGDB/regulatory.db 644 0 0
 file /init $BUILD_DIR/init 755 0 0
 LIST
+
+# An OpenWrt image gets a copy of OPENWRT_ROOTFS with the files of this repository
+# on top. A test image carries it in the initramfs. With FLASH_IMAGE=1 it becomes
+# the squashfs of an installed image instead, and the initramfs keeps only /init.
+OPENWRT_ROOT=$BUILD_DIR/openwrt-root
+if [ -n "${FLASH_IMAGE:-}" ] && [ -z "${OPENWRT_ROOTFS:-}" ]; then
+    echo "FLASH_IMAGE needs OPENWRT_ROOTFS" >&2
+    exit 1
+fi
+if [ -n "${OPENWRT_ROOTFS:-}" ]; then
+    mkdir -p "$OPENWRT_ROOT"
+    rsync -a --delete "$OPENWRT_ROOTFS/" "$OPENWRT_ROOT/"
+fi
+
+# Adds a file to the image: to the OpenWrt files, or else to the initramfs list.
+# Usage: add_file <path on the box> <source> <mode>
+add_file() {
+    if [ -n "${OPENWRT_ROOTFS:-}" ]; then
+        install -D -m "$3" "$2" "$OPENWRT_ROOT$1"
+    else
+        echo "file $1 $2 $3 0 0" >> "$TREE/initramfs.list"
+    fi
+}
 
 if [ -z "${OPENWRT_ROOTFS:-}" ]; then
     cat >> "$TREE/initramfs.list" <<LIST
@@ -98,34 +124,35 @@ else
     sed -e "s|@WIFI_PASSWORD@|$(cat "$PASSWORD_FILE")|" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|" \
         "$SOURCE_DIR/openwrt/uci-defaults-test" > "$BUILD_DIR/uci-defaults-test"
     chmod 600 "$BUILD_DIR/uci-defaults-test"
-    cat >> "$TREE/initramfs.list" <<LIST
-file /etc/uci-defaults/99-fritzbox7390-test $BUILD_DIR/uci-defaults-test 600 0 0
-file /etc/board.d/01_leds $SOURCE_DIR/openwrt/files/etc/board.d/01_leds 755 0 0
-file /etc/board.d/02_network $SOURCE_DIR/openwrt/files/etc/board.d/02_network 755 0 0
-file /usr/sbin/test-diagnostics $SOURCE_DIR/openwrt/test-diagnostics 755 0 0
-LIST
+    add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
+    add_file /etc/board.d/01_leds "$SOURCE_DIR/openwrt/files/etc/board.d/01_leds" 755
+    add_file /etc/board.d/02_network "$SOURCE_DIR/openwrt/files/etc/board.d/02_network" 755
+    add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
+    # The initramfs has it as well, but cfg80211 reads it again after the switch
+    # to the squashfs.
+    add_file /lib/firmware/regulatory.db "$REGDB/regulatory.db" 644
     if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
-        echo "file /etc/dropbear/authorized_keys $SSH_PUBLIC_KEY 600 0 0" >> "$TREE/initramfs.list"
+        add_file /etc/dropbear/authorized_keys "$SSH_PUBLIC_KEY" 600
     fi
 fi
 
 # The FPGA bitstream belongs to AVM and stays out of the repository. Pass its path
 # in BITFILE to include it, for example a copy taken from your own box.
 if [ -n "${BITFILE:-}" ]; then
-    echo "file /lib/firmware/fpga.bit $BITFILE 600 0 0" >> "$TREE/initramfs.list"
+    add_file /lib/firmware/fpga.bit "$BITFILE" 600
 fi
 
 # The firmware of the packet processors belongs to Ikanos and stays out of the
 # repository too. tools/extract-ap-firmware.py writes it from AVM's modules.
-echo "file /lib/firmware/fusiv-bmu.bin $AP_FIRMWARE_DIR/fusiv-bmu.bin 600 0 0" >> "$TREE/initramfs.list"
-echo "file /lib/firmware/fusiv-eth.bin $AP_FIRMWARE_DIR/fusiv-eth.bin 600 0 0" >> "$TREE/initramfs.list"
+add_file /lib/firmware/fusiv-bmu.bin "$AP_FIRMWARE_DIR/fusiv-bmu.bin" 600
+add_file /lib/firmware/fusiv-eth.bin "$AP_FIRMWARE_DIR/fusiv-eth.bin" 600
 
 make -C "$TREE" "${MAKE_ARGS[@]}" fusiv_defconfig
-if [ -n "${OPENWRT_ROOTFS:-}" ]; then
+if [ -n "${OPENWRT_ROOTFS:-}" ] && [ -z "${FLASH_IMAGE:-}" ]; then
     # The OpenWrt files belong to the building user, root owns them on the box.
-    # The list comes last, so that its files replace those of the image.
+    # The list comes last, so that /init and the device nodes are those of the list.
     "$TREE/scripts/config" --file "$TREE/.config" \
-        --set-str INITRAMFS_SOURCE "$OPENWRT_ROOTFS $TREE/initramfs.list" \
+        --set-str INITRAMFS_SOURCE "$OPENWRT_ROOT $TREE/initramfs.list" \
         --set-val INITRAMFS_ROOT_UID "$(id -u)" --set-val INITRAMFS_ROOT_GID "$(id -g)" \
         --enable RD_XZ --disable INITRAMFS_COMPRESSION_NONE --enable INITRAMFS_COMPRESSION_XZ
     make -C "$TREE" "${MAKE_ARGS[@]}" olddefconfig
@@ -144,3 +171,32 @@ ENTRY=0x$(awk '$3 == "kernel_entry" { print $1 }' "$TREE/System.map")
 python3 "$SOURCE_DIR/tools/make-eva-image.py" build \
     "$TREE/arch/mips/boot/vmlinux.bin" "$LOAD_ADDRESS" "$ENTRY" "$BUILD_DIR/fritzbox-7390.eva"
 python3 "$SOURCE_DIR/tools/make-eva-image.py" verify "$BUILD_DIR/fritzbox-7390.eva"
+
+# The installed image fills the area where EVA starts the firmware (mtd1 in EVA,
+# 0x20000 to 0xf00000 in flash): the EVA image in a kernel partition of 4 MB, the
+# same as in the device tree and arch/mips/fusiv/ramboot.c, then the squashfs.
+# Padding is 0xff, like erased flash.
+if [ -n "${FLASH_IMAGE:-}" ]; then
+    KERNEL_PARTITION_SIZE=$((4 * 1024 * 1024))
+    FIRMWARE_AREA_SIZE=$((0xee0000))
+    SQUASHFS=$BUILD_DIR/openwrt-root.squashfs
+    FLASH=$BUILD_DIR/fritzbox-7390-flash.bin
+
+    mksquashfs "$OPENWRT_ROOT" "$SQUASHFS" -noappend -all-root -comp xz -b 256K -quiet
+    kernel_size=$(stat -c %s "$BUILD_DIR/fritzbox-7390.eva")
+    if [ "$kernel_size" -gt "$KERNEL_PARTITION_SIZE" ]; then
+        echo "The EVA image ($kernel_size bytes) does not fit into the kernel partition." >&2
+        exit 1
+    fi
+    {
+        cat "$BUILD_DIR/fritzbox-7390.eva"
+        head -c $((KERNEL_PARTITION_SIZE - kernel_size)) /dev/zero | tr '\000' '\377'
+        cat "$SQUASHFS"
+    } > "$FLASH"
+    flash_size=$(stat -c %s "$FLASH")
+    if [ "$flash_size" -gt "$FIRMWARE_AREA_SIZE" ]; then
+        echo "The flash image ($flash_size bytes) is larger than the firmware area." >&2
+        exit 1
+    fi
+    echo "Flash image: $FLASH, $flash_size of $FIRMWARE_AREA_SIZE bytes"
+fi

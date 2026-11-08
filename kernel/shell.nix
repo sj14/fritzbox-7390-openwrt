@@ -15,6 +15,8 @@ pkgs.mkShell {
     pkgs.gnupatch
     pkgs.perl
     pkgs.python3
+    pkgs.rsync
+    pkgs.squashfsTools
     pkgs.xz
     pkgs.zig
   ];

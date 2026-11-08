@@ -166,6 +166,24 @@
 						reg = <0x198a 0x1000>;
 					};
 				};
+
+				/*
+				 * Where EVA starts the firmware: the EVA image of the kernel,
+				 * padded to 4 MB as in build.sh, then OpenWrt's squashfs. While
+				 * the AVM firmware is installed, its own kernel and root file
+				 * system lie here instead. tffs follows at 0xf00000 and is not listed.
+				 */
+				partition@20000 {
+					label = "kernel";
+					reg = <0x20000 0x400000>;
+					read-only;
+				};
+
+				partition@420000 {
+					label = "rootfs";
+					reg = <0x420000 0xae0000>;
+					read-only;
+				};
 			};
 		};
 
