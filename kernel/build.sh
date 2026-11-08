@@ -173,15 +173,19 @@ python3 "$SOURCE_DIR/tools/make-eva-image.py" build \
 python3 "$SOURCE_DIR/tools/make-eva-image.py" verify "$BUILD_DIR/fritzbox-7390.eva"
 
 # The installed image fills the area where EVA starts the firmware (mtd1 in EVA,
-# 0x20000 to 0xf00000 in flash): a kernel partition of 4 MB, the same as in the
-# device tree and arch/mips/fusiv/ramboot.c, then the squashfs. The kernel
-# partition holds the EVA image, padded to 64 KB, and then a dummy squashfs:
-# from flash, EVA only starts a kernel that a squashfs follows, as in AVM's own
-# images. OpenWrt builds its images for AVM boards the same way and provides the
-# dummy (eva.dummy.squashfs, 256 bytes). Padding is 0xff, like erased flash.
+# 0x20000 to 0xf00000 in flash) with the partitions of the device tree: kernel
+# (4 MB, also in arch/mips/fusiv/ramboot.c), rootfs (6 MB) and rootfs_data (the
+# rest). The kernel partition holds the EVA image, padded to 64 KB, and then a
+# dummy squashfs: from flash, EVA only starts a kernel that a squashfs follows,
+# as in AVM's own images. OpenWrt builds its images for AVM boards the same way
+# and provides the dummy (eva.dummy.squashfs, 256 bytes). rootfs_data starts with
+# OpenWrt's mark 0xdeadc0de, so that mount_root erases it and sets up jffs2 there
+# at the first start. Padding is 0xff, like erased flash.
 if [ -n "${FLASH_IMAGE:-}" ]; then
     KERNEL_PARTITION_SIZE=$((4 * 1024 * 1024))
+    ROOTFS_PARTITION_SIZE=$((6 * 1024 * 1024))
     FIRMWARE_AREA_SIZE=$((0xee0000))
+    ROOTFS_DATA_MARK='\xde\xad\xc0\xde'
     EVA_DUMMY_URL=https://raw.githubusercontent.com/openwrt/openwrt/v25.12.0/target/linux/lantiq/image/eva.dummy.squashfs
     EVA_DUMMY_SHA256=9a6353949b14c225c29e64e93aff2271f888536373ae5c69c0cbd7079522e356
     EVA_DUMMY=$BUILD_DIR/eva.dummy.squashfs
@@ -213,7 +217,14 @@ if [ -n "${FLASH_IMAGE:-}" ]; then
         exit 1
     fi
     pad_to "$KERNEL_PARTITION" "$KERNEL_PARTITION_SIZE"
+    squashfs_size=$(stat -c %s "$SQUASHFS")
+    if [ "$squashfs_size" -gt "$ROOTFS_PARTITION_SIZE" ]; then
+        echo "The squashfs ($squashfs_size bytes) does not fit into the rootfs partition." >&2
+        exit 1
+    fi
     cat "$KERNEL_PARTITION" "$SQUASHFS" > "$FLASH"
+    pad_to "$FLASH" $((KERNEL_PARTITION_SIZE + ROOTFS_PARTITION_SIZE))
+    printf "$ROOTFS_DATA_MARK" >> "$FLASH"
     flash_size=$(stat -c %s "$FLASH")
     if [ "$flash_size" -gt "$FIRMWARE_AREA_SIZE" ]; then
         echo "The flash image ($flash_size bytes) is larger than the firmware area." >&2

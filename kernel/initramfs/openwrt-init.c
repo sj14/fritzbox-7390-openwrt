@@ -87,15 +87,33 @@ static int find_mtd(const char *name) {
     return number;
 }
 
+// Puts a tmpfs over the squashfs at /rom with overlayfs, at /newroot, in the same
+// layout as OpenWrt (changes at /overlay).
+static int mount_ram_overlay(void) {
+    static const char OVERLAY_OPTIONS[] = "lowerdir=/rom,upperdir=/overlay/upper,workdir=/overlay/work";
+    char line[96];
+
+    if (mount("tmpfs", "/overlay", "tmpfs", MS_NOATIME, "mode=0755") != 0 ||
+        mkdir("/overlay/upper", 0755) != 0 || mkdir("/overlay/work", 0755) != 0 ||
+        mount("overlayfs:/overlay", "/newroot", "overlay", MS_NOATIME, OVERLAY_OPTIONS) != 0) {
+        snprintf(line, sizeof(line), "cannot set up the overlay: %s\n", strerror(errno));
+        log_line(line);
+        return -1;
+    }
+    mount("/rom", "/newroot/rom", NULL, MS_MOVE, NULL);
+    mount("/overlay", "/newroot/overlay", NULL, MS_MOVE, NULL);
+    return 0;
+}
+
 // An installed image has no OpenWrt files in the initramfs. Its root file system
 // is the squashfs in the rootfs partition, or in rootfs_ram while the same image
-// is tested from RAM (arch/mips/fusiv/ramboot.c). This puts a tmpfs over it with
-// overlayfs, in the same layout as OpenWrt (squashfs at /rom, changes at /overlay),
-// and makes that the root directory, like switch_root. OpenWrt's mount_root can't
-// do it here: for a squashfs on a block device it wants a loop device behind the
-// squashfs, which would write into the flash.
-static int switch_to_flash_root(void) {
-    static const char OVERLAY_OPTIONS[] = "lowerdir=/rom,upperdir=/overlay/upper,workdir=/overlay/work";
+// is tested from RAM (arch/mips/fusiv/ramboot.c). This makes it the root
+// directory, like switch_root.
+//
+// From flash, OpenWrt's mount_root then puts its overlay on the rootfs_data
+// partition, as on other boards. From RAM, the changes stay in a tmpfs, so that a
+// test never writes the flash, and *root_writable tells to skip mount_root.
+static int switch_to_flash_root(bool *root_writable) {
     char device[32];
     char line[128];
     const char *name = "rootfs_ram";
@@ -113,21 +131,17 @@ static int switch_to_flash_root(void) {
         return -1;
     }
 
+    *root_writable = strcmp(name, "rootfs_ram") == 0;
+    const char *squashfs_target = *root_writable ? "/rom" : "/newroot";
     snprintf(device, sizeof(device), "/dev/mtdblock%d", number);
-    if (mount(device, "/rom", "squashfs", MS_RDONLY, NULL) != 0) {
+    if (mount(device, squashfs_target, "squashfs", MS_RDONLY, NULL) != 0) {
         snprintf(line, sizeof(line), "cannot mount %s (%s): %s\n", device, name, strerror(errno));
         log_line(line);
         return -1;
     }
-    if (mount("tmpfs", "/overlay", "tmpfs", MS_NOATIME, "mode=0755") != 0 ||
-        mkdir("/overlay/upper", 0755) != 0 || mkdir("/overlay/work", 0755) != 0 ||
-        mount("overlayfs:/overlay", "/newroot", "overlay", MS_NOATIME, OVERLAY_OPTIONS) != 0) {
-        snprintf(line, sizeof(line), "cannot set up the overlay: %s\n", strerror(errno));
-        log_line(line);
+    if (*root_writable && mount_ram_overlay() != 0) {
         return -1;
     }
-    mount("/rom", "/newroot/rom", NULL, MS_MOVE, NULL);
-    mount("/overlay", "/newroot/overlay", NULL, MS_MOVE, NULL);
     mount("/dev", "/newroot/dev", NULL, MS_MOVE, NULL);
     if (chdir("/newroot") != 0 || mount(".", "/", NULL, MS_MOVE, NULL) != 0 || chroot(".") != 0 ||
         chdir("/") != 0) {
@@ -145,8 +159,9 @@ int main(void) {
 
     // O_CLOEXEC: OpenWrt's init opens the kernel log itself.
     kmsg_fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
-    bool in_initramfs = access("/sbin/init", X_OK) == 0;
-    if (!in_initramfs && switch_to_flash_root() != 0) {
+    // A test image with OpenWrt in the initramfs is writable already.
+    bool root_writable = access("/sbin/init", X_OK) == 0;
+    if (!root_writable && switch_to_flash_root(&root_writable) != 0) {
         return 1;
     }
 
@@ -159,9 +174,11 @@ int main(void) {
     umount("/proc");
 
     schedule_restart();
-    // The root directory is writable in both cases, so OpenWrt's preinit skips
-    // mount_root, as for its own initramfs.
-    setenv("INITRAMFS", "1", 1);
+    // With a writable root directory, OpenWrt's preinit skips mount_root, as for
+    // its own initramfs.
+    if (root_writable) {
+        setenv("INITRAMFS", "1", 1);
+    }
     execl("/sbin/init", "/sbin/init", (char *)NULL);
     snprintf(line, sizeof(line), "cannot start /sbin/init: %s\n", strerror(errno));
     log_line(line);
