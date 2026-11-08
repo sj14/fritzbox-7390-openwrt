@@ -173,26 +173,47 @@ python3 "$SOURCE_DIR/tools/make-eva-image.py" build \
 python3 "$SOURCE_DIR/tools/make-eva-image.py" verify "$BUILD_DIR/fritzbox-7390.eva"
 
 # The installed image fills the area where EVA starts the firmware (mtd1 in EVA,
-# 0x20000 to 0xf00000 in flash): the EVA image in a kernel partition of 4 MB, the
-# same as in the device tree and arch/mips/fusiv/ramboot.c, then the squashfs.
-# Padding is 0xff, like erased flash.
+# 0x20000 to 0xf00000 in flash): a kernel partition of 4 MB, the same as in the
+# device tree and arch/mips/fusiv/ramboot.c, then the squashfs. The kernel
+# partition holds the EVA image, padded to 64 KB, and then a dummy squashfs:
+# from flash, EVA only starts a kernel that a squashfs follows, as in AVM's own
+# images. OpenWrt builds its images for AVM boards the same way and provides the
+# dummy (eva.dummy.squashfs, 256 bytes). Padding is 0xff, like erased flash.
 if [ -n "${FLASH_IMAGE:-}" ]; then
     KERNEL_PARTITION_SIZE=$((4 * 1024 * 1024))
     FIRMWARE_AREA_SIZE=$((0xee0000))
+    EVA_DUMMY_URL=https://raw.githubusercontent.com/openwrt/openwrt/v25.12.0/target/linux/lantiq/image/eva.dummy.squashfs
+    EVA_DUMMY_SHA256=9a6353949b14c225c29e64e93aff2271f888536373ae5c69c0cbd7079522e356
+    EVA_DUMMY=$BUILD_DIR/eva.dummy.squashfs
     SQUASHFS=$BUILD_DIR/openwrt-root.squashfs
+    KERNEL_PARTITION=$BUILD_DIR/kernel-partition.bin
     FLASH=$BUILD_DIR/fritzbox-7390-flash.bin
 
+    # Pads a file with 0xff to a multiple of the given size.
+    # Usage: pad_to <file> <size>
+    pad_to() {
+        local size
+        size=$(stat -c %s "$1")
+        local padding=$(( ($2 - size % $2) % $2 ))
+        head -c "$padding" /dev/zero | tr '\000' '\377' >> "$1"
+    }
+
+    if [ ! -f "$EVA_DUMMY" ]; then
+        curl -fL -o "$EVA_DUMMY" "$EVA_DUMMY_URL"
+    fi
+    echo "$EVA_DUMMY_SHA256  $EVA_DUMMY" | sha256sum -c -
+
     mksquashfs "$OPENWRT_ROOT" "$SQUASHFS" -noappend -all-root -comp xz -b 256K -quiet
-    kernel_size=$(stat -c %s "$BUILD_DIR/fritzbox-7390.eva")
+    cp "$BUILD_DIR/fritzbox-7390.eva" "$KERNEL_PARTITION"
+    pad_to "$KERNEL_PARTITION" $((64 * 1024))
+    cat "$EVA_DUMMY" >> "$KERNEL_PARTITION"
+    kernel_size=$(stat -c %s "$KERNEL_PARTITION")
     if [ "$kernel_size" -gt "$KERNEL_PARTITION_SIZE" ]; then
-        echo "The EVA image ($kernel_size bytes) does not fit into the kernel partition." >&2
+        echo "The EVA image ($kernel_size bytes with the dummy) does not fit into the kernel partition." >&2
         exit 1
     fi
-    {
-        cat "$BUILD_DIR/fritzbox-7390.eva"
-        head -c $((KERNEL_PARTITION_SIZE - kernel_size)) /dev/zero | tr '\000' '\377'
-        cat "$SQUASHFS"
-    } > "$FLASH"
+    pad_to "$KERNEL_PARTITION" "$KERNEL_PARTITION_SIZE"
+    cat "$KERNEL_PARTITION" "$SQUASHFS" > "$FLASH"
     flash_size=$(stat -c %s "$FLASH")
     if [ "$flash_size" -gt "$FIRMWARE_AREA_SIZE" ]; then
         echo "The flash image ($flash_size bytes) is larger than the firmware area." >&2

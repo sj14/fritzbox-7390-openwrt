@@ -64,7 +64,7 @@ With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of
 
 ### Flash image
 
-With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 4 MB, followed by the OpenWrt files as squashfs. It fills at most the firmware area of 14.875 MB, see "Installing" in `../DEVELOPMENT.md`. The same file can be tested from RAM first (`test/openwrt-test.sh`), where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
+With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, and the OpenWrt files as squashfs. It fills at most the firmware area of 14.875 MB, see "Installing" in `../DEVELOPMENT.md`. The same file can be tested from RAM first (`test/openwrt-test.sh`), where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
 
 ## What was tested
 

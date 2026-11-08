@@ -143,7 +143,7 @@ An image can be loaded into RAM through EVA via FTP, the same way as OpenWrt's `
 
 The box is unavailable as an access point during tests, so a second, used 7390 as a test device would be helpful.
 
-### Installing (prepared, not done yet)
+### Installing (first attempt failed, see below)
 
 EVA boots from the area it calls `mtd1` (`0x9F020000`-`0x9FF00000`, 14.875 MB). The AVM firmware keeps its kernel and its root file system there one after the other; under Freetz they appear as `mtd1` ("kernel", `0x15a500` bytes) and `mtd0` ("rootfs", `0xd85b00` bytes). The flash image `kernel/build/fritzbox-7390-flash.bin` is written there over EVA's FTP with `MEDIA FLSH`, `STOR mtd1` and `REBOOT`, the same way as Freetz's `tools/push_firmware`. The bootloader (`urlader`, `mtd2`) and the settings (`tffs`, `mtd3` and `mtd4`) are never written.
 
@@ -162,6 +162,8 @@ Rescue paths after an install:
 | EVA itself broken | only JTAG, so `mtd2` is never written |
 
 An installed image needs `TEST_DURATION_S=0`, otherwise `/init` restarts the box after each test period.
+
+**First attempt (2026-11-08):** `tools/eva-ramboot.py flash` wrote the flash image in 45 to 80 s, and EVA confirmed it. But at the next start EVA stayed in the bootloader instead of starting the kernel, also after appending the TI checksum that ends AVM's image (`0xc453de23` and the inverted POSIX `cksum` of everything before it, both little endian, checked against the backup, where it sits at `0xed4500`). Writing the backup back the same way restored Freetz. The image booted fine from RAM, so EVA checks more when it starts from flash. The likely reason: AVM's images, and OpenWrt's for other AVM boards, have a squashfs right after the kernel, and the first image had only padding there. OpenWrt adds a dummy squashfs of 256 bytes (`eva.dummy.squashfs`) after the kernel, padded to 64 KB, and appends no TI checksum. `build.sh` now does the same. Whether EVA boots it from flash is not tested yet.
 
 Layout of an installed OpenWrt (`FLASH_IMAGE=1` in `kernel/build.sh`). On 2026-11-08 the complete flash image booted from RAM, came up as an access point with SSH and LuCI, and returned to Freetz:
 
@@ -229,7 +231,7 @@ All work so far was done without a console. The kernel writes its log to a reser
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] NAND (512 MB)
 - [ ] Measure the UART pins and connect the console
-- [ ] Download the proprietary files from AVM's public firmware image, so that a build doesn't need a copy from a box
+- [ ] Download the proprietary files from AVM's public firmware image, so that a build doesn't need a copy from a box. `FRITZ.Box_Fon_WLAN_7390-06.88.image` from download.avm.de (SHA256 `35cf96b6d9417c46bdf227a7b2beb0d9c39df0c9dc6eff6c39c30c9c27819ae5`) is a tar, whose `var/tmp/kernel.image` holds the kernel and at `0x15a500` the root file system as AVM's squashfs 3.76, big endian. `sasquatch -be -s` reads its superblock, but listing it fails at the fragment table, so it probably needs Freetz's squashfs 3 tools with AVM's changes.
 - [ ] Find out what overwrites the RAM log: after two test runs of the flash image that ran for 10 minutes, Freetz found no log, after one of 4 minutes it did
 
 ## Sources
