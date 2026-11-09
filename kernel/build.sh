@@ -91,8 +91,8 @@ if [ -n "${FLASH_IMAGE:-}" ] && [ -z "${OPENWRT_ROOTFS:-}" ]; then
     exit 1
 fi
 if [ -n "${OPENWRT_ROOTFS:-}" ]; then
-    mkdir -p "$OPENWRT_ROOT"
-    rsync -a --delete "$OPENWRT_ROOTFS/" "$OPENWRT_ROOT/"
+    rm -rf -- "$OPENWRT_ROOT"
+    cp -a "$OPENWRT_ROOTFS" "$OPENWRT_ROOT"
 fi
 
 # Adds a file to the image: to the OpenWrt files, or else to the initramfs list.

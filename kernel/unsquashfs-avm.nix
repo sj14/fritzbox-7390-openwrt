@@ -2,7 +2,7 @@
 # Freetz-NG builds it: squashfs 3.4 with Freetz's patches, which add AVM's LZMA
 # variant (squashfs version 3:76), linked with the LZMA SDK 4.65 and Freetz's
 # patches for it. tools/fetch-avm-firmware.sh uses it.
-{ pkgs ? import <nixpkgs> { } }:
+{ pkgs ? import ./nixpkgs.nix }:
 
 let
   freetz = pkgs.fetchFromGitHub {

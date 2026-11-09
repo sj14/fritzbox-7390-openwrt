@@ -42,13 +42,14 @@ Before you start:
 
 Building, in `kernel/`:
 
-1. Get the OpenWrt files from the ImageBuilder, see "OpenWrt image" in `kernel/README.md`, steps 1 and 2.
+1. Build the OpenWrt files with OpenWrt's ImageBuilder: `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`.
 2. Get AVM's firmware files from AVM's public download: `nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"`.
 3. Make an SSH key for the box, without a passphrase: `ssh-keygen -t ed25519 -N "" -f build/box-ssh-key`.
 4. Build the image. Leave out `BITFILE` if you don't need USB, because the FPGA that powers USB also lights a red LED inside the box:
 
    ```bash
-   FLASH_IMAGE=1 TEST_DURATION_S=0 OPENWRT_ROOTFS=<copy of the ImageBuilder root> \
+   FLASH_IMAGE=1 TEST_DURATION_S=0 \
+     OPENWRT_ROOTFS=build/openwrt/openwrt-imagebuilder-25.12.6-ath79-generic.Linux-x86_64/build_dir/target-mips_24kc_musl/root-ath79 \
      SSH_PUBLIC_KEY=build/box-ssh-key.pub AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware \
      BITFILE=build/avm-firmware/bitfile.bit nix-shell --run ./build.sh
    ```

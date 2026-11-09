@@ -1,4 +1,4 @@
-{ pkgs ? import <nixpkgs> { } }:
+{ pkgs ? import ./nixpkgs.nix }:
 
 let
   mips = pkgs.pkgsCross.mips-linux-gnu;
@@ -15,9 +15,10 @@ pkgs.mkShell {
     pkgs.gnupatch
     pkgs.perl
     pkgs.python3
-    pkgs.rsync
     pkgs.squashfsTools
+    pkgs.unzip
     pkgs.xz
+    pkgs.zstd
     pkgs.zig
   ];
 

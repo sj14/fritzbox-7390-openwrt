@@ -43,6 +43,8 @@ AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfil
 | `tools/make-eva-image.py` | creates and checks images for the EVA bootloader |
 | `tools/eva-ramboot.py` | loads an image through EVA, restarts the box on failure |
 | `tools/fetch-avm-firmware.sh` | takes the proprietary files from AVM's public firmware download |
+| `tools/fetch-openwrt-rootfs.sh` | builds the OpenWrt root file system with the ImageBuilder of a fixed release |
+| `nixpkgs.nix` | the pinned nixpkgs that `shell.nix` and the other Nix files build with |
 | `tools/fix-avm-squashfs.py`, `unsquashfs-avm.nix` | make AVM's root file system readable |
 | `../tools/fusiv-links.c` | shows link changes of the five switch PHYs, to find which socket is which |
 
@@ -65,9 +67,8 @@ nix-build shell.nix -A inputDerivation -o build/shell-inputs
 
 With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of the test programs, and `/init` only loads the FPGA and sets up the switch before it starts OpenWrt's init. The root file system comes from the OpenWrt ImageBuilder for `ath79/generic`, whose packages are built for the same CPU (`mips_24kc`, big endian). The kernel stays this one, with everything built in, so OpenWrt's kernel modules are not used.
 
-1. Download the ImageBuilder of an OpenWrt release for `ath79/generic` and check it against the release's `sha256sums`.
-2. Build an image there, for example `make image PROFILE=tplink_tl-wdr4300-v1 PACKAGES="luci wifi-scripts iw iwinfo -procd-ujail -ppp -ppp-mod-pppoe -kmod-ath9k -kmod-gpio-button-hotplug -swconfig -uboot-envtools -kmod-usb2 -kmod-usb-ledtrig-usbport"`. `wifi-scripts` and `iw` are listed on their own, because they come otherwise with `kmod-ath9k`. The profile doesn't matter, only its root directory is used: `build_dir/target-mips_24kc_musl/root-ath79`. Copy it, because the next ImageBuilder run replaces it.
-3. Run `OPENWRT_ROOTFS=<copy> SSH_PUBLIC_KEY=<public key> ./build.sh` with the other variables as for a test image. A key of its own for the test box, without a passphrase, works for unattended tests: `ssh-keygen -t ed25519 -N "" -f build/test-ssh-key`.
+1. Run `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`. It downloads the ImageBuilder of OpenWrt 25.12.6, checks its SHA256, builds an image with LuCI and without kernel modules, and prints the root directory of that image as `OPENWRT_ROOTFS`. The release and the package list are set at the top of the script. The packages come from the release's package feeds, so a later run can pick up newer versions of packages outside OpenWrt's base feed, such as LuCI. The script writes the packages in the image and their versions to `build/openwrt/packages.manifest`; keep a copy with an image to compare it with a later one.
+2. Run `OPENWRT_ROOTFS=<printed directory> SSH_PUBLIC_KEY=<public key> ./build.sh` with the other variables as for a test image. A key of its own for the test box, without a passphrase, works for unattended tests: `ssh-keygen -t ed25519 -N "" -f build/test-ssh-key`.
 
 `openwrt/uci-defaults-test` sets up the image as an access point in the home network on its first start: the LAN at `192.168.0.250` without a DHCP server of its own, both radios on with WPA2/WPA3 (`sae-mixed`) and the test networks' password. The root password is random as well, in `build/root-password`, and `SSH_PUBLIC_KEY` names a key for SSH. `openwrt/files/etc/board.d/02_network` puts `lan0` into the LAN bridge and takes its address from `maca` in the bootloader environment.
 

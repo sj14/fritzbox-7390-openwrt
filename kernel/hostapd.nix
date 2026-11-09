@@ -1,7 +1,7 @@
 # A small static MIPS build of hostapd for the initramfs. It uses hostapd's
 # internal crypto instead of OpenSSL and leaves out the enterprise features.
 # The size matters: EVA stopped responding while receiving a 5.9 MB image.
-{ pkgs ? import <nixpkgs> { } }:
+{ pkgs ? import ./nixpkgs.nix }:
 
 (pkgs.pkgsCross.mips-linux-gnu.pkgsStatic.hostapd.override {
   sqlite = null;
