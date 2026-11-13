@@ -158,6 +158,9 @@ if [ -n "${OPENWRT_ROOTFS:-}" ] && [ -z "${FLASH_IMAGE:-}" ]; then
         --enable RD_XZ --disable INITRAMFS_COMPRESSION_NONE --enable INITRAMFS_COMPRESSION_XZ
     make -C "$TREE" "${MAKE_ARGS[@]}" olddefconfig
 fi
+if [ -n "${OPENWRT_ROOTFS:-}" ]; then
+    "$SOURCE_DIR/tools/check-kernel-modules.sh" "$TREE" "$OPENWRT_ROOT"
+fi
 make -C "$TREE" "${MAKE_ARGS[@]}" vmlinux.bin
 
 # The kernel must end below the RAM log (FUSIV_RAMLOG_PHYS).

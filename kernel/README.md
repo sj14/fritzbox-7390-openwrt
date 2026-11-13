@@ -44,6 +44,7 @@ AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfil
 | `tools/eva-ramboot.py` | loads an image through EVA, restarts the box on failure |
 | `tools/fetch-avm-firmware.sh` | takes the proprietary files from AVM's public firmware download |
 | `tools/fetch-openwrt-rootfs.sh` | builds the OpenWrt root file system with the ImageBuilder of a fixed release |
+| `tools/check-kernel-modules.sh` | stops the build if the kernel lacks a kernel module that the OpenWrt image brings |
 | `nixpkgs.nix` | the pinned nixpkgs that `shell.nix` and the other Nix files build with |
 | `tools/fix-avm-squashfs.py`, `unsquashfs-avm.nix` | make AVM's root file system readable |
 | `../tools/fusiv-links.c` | shows link changes of the five switch PHYs, to find which socket is which |
