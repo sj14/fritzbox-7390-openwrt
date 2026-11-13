@@ -111,6 +111,20 @@ CONFIG_NFT_FIB_IPV4=y
 CONFIG_NFT_FIB_IPV6=y
 CONFIG_NF_TABLES_IPV4=y
 CONFIG_NF_TABLES_IPV6=y
+# What OpenWrt's kernel packages of firewall4 enable as well (KCONFIG of
+# kmod-nf-conntrack, kmod-nft-core and kmod-nf-log, kmod-nf-log6).
+CONFIG_NF_CONNTRACK_MARK=y
+CONFIG_NF_CONNTRACK_ZONES=y
+CONFIG_NFT_HASH=y
+CONFIG_NFT_NUMGEN=y
+CONFIG_NFT_QUOTA=y
+CONFIG_NF_LOG_SYSLOG=y
+CONFIG_NF_LOG_IPV4=y
+CONFIG_NF_LOG_IPV6=y
+# nlbwmon reads the connections through netlink and listens to their events
+# (kmod-nf-conntrack-netlink). Without them it logs "Unable to dump conntrack".
+CONFIG_NF_CT_NETLINK=y
+CONFIG_NF_CONNTRACK_EVENTS=y
 CONFIG_STACKPROTECTOR=y
 CONFIG_STACKPROTECTOR_STRONG=y
 CONFIG_INIT_STACK_ALL_ZERO=y
