@@ -62,6 +62,9 @@ CONFIG_SQUASHFS_XZ=y
 CONFIG_OVERLAY_FS=y
 # The writable rootfs_data partition, which OpenWrt's mount_root sets up.
 CONFIG_JFFS2_FS=y
+# The 512 MB NAND, through the bus and GPIOs, see the device tree.
+CONFIG_MTD_RAW_NAND=y
+CONFIG_MTD_NAND_GPIO=y
 CONFIG_USB_SUPPORT=y
 CONFIG_USB=y
 CONFIG_USB_EHCI_HCD=y

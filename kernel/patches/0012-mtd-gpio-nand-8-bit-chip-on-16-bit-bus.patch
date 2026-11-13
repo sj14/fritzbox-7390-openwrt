@@ -1,0 +1,117 @@
+--- a/drivers/mtd/nand/raw/gpio.c
++++ b/drivers/mtd/nand/raw/gpio.c
+@@ -38,6 +38,7 @@
+ 	struct gpio_desc *ale;
+ 	struct gpio_desc *rdy;
+ 	struct gpio_desc *nwp; /* Optional write protection */
++	bool bus_16bit; /* 8 bit chip on the low byte of a 16 bit bus */
+ };
+ 
+ static inline struct gpiomtd *gpio_nand_getpriv(struct mtd_info *mtd)
+@@ -45,6 +46,25 @@
+ 	return container_of(mtd_to_nand(mtd), struct gpiomtd, nand_chip);
+ }
+ 
++/*
++ * An 8 bit chip on the low byte lines of a 16 bit bus, as on the AVM
++ * FRITZ!Box 7390, only sees 16 bit accesses.
++ */
++static void gpio_nand_write_byte(struct gpiomtd *gpiomtd, u8 value)
++{
++	if (gpiomtd->bus_16bit)
++		writew(value, gpiomtd->io);
++	else
++		writeb(value, gpiomtd->io);
++}
++
++static u8 gpio_nand_read_byte(struct gpiomtd *gpiomtd)
++{
++	if (gpiomtd->bus_16bit)
++		return readw(gpiomtd->io);
++	return readb(gpiomtd->io);
++}
++
+ 
+ #ifdef CONFIG_ARM
+ /* gpio_nand_dosync()
+@@ -83,7 +103,7 @@
+ 		gpio_nand_dosync(gpiomtd);
+ 		gpiod_set_value(gpiomtd->cle, 1);
+ 		gpio_nand_dosync(gpiomtd);
+-		writeb(instr->ctx.cmd.opcode, gpiomtd->io);
++		gpio_nand_write_byte(gpiomtd, instr->ctx.cmd.opcode);
+ 		gpio_nand_dosync(gpiomtd);
+ 		gpiod_set_value(gpiomtd->cle, 0);
+ 		return 0;
+@@ -93,15 +113,20 @@
+ 		gpiod_set_value(gpiomtd->ale, 1);
+ 		gpio_nand_dosync(gpiomtd);
+ 		for (i = 0; i < instr->ctx.addr.naddrs; i++)
+-			writeb(instr->ctx.addr.addrs[i], gpiomtd->io);
++			gpio_nand_write_byte(gpiomtd, instr->ctx.addr.addrs[i]);
+ 		gpio_nand_dosync(gpiomtd);
+ 		gpiod_set_value(gpiomtd->ale, 0);
+ 		return 0;
+ 
+ 	case NAND_OP_DATA_IN_INSTR:
+ 		gpio_nand_dosync(gpiomtd);
+-		if ((chip->options & NAND_BUSWIDTH_16) &&
+-		    !instr->ctx.data.force_8bit)
++		if (gpiomtd->bus_16bit) {
++			u8 *in = instr->ctx.data.buf.in;
++
++			for (i = 0; i < instr->ctx.data.len; i++)
++				in[i] = gpio_nand_read_byte(gpiomtd);
++		} else if ((chip->options & NAND_BUSWIDTH_16) &&
++			   !instr->ctx.data.force_8bit)
+ 			ioread16_rep(gpiomtd->io, instr->ctx.data.buf.in,
+ 				     instr->ctx.data.len / 2);
+ 		else
+@@ -111,8 +136,13 @@
+ 
+ 	case NAND_OP_DATA_OUT_INSTR:
+ 		gpio_nand_dosync(gpiomtd);
+-		if ((chip->options & NAND_BUSWIDTH_16) &&
+-		    !instr->ctx.data.force_8bit)
++		if (gpiomtd->bus_16bit) {
++			const u8 *out = instr->ctx.data.buf.out;
++
++			for (i = 0; i < instr->ctx.data.len; i++)
++				gpio_nand_write_byte(gpiomtd, out[i]);
++		} else if ((chip->options & NAND_BUSWIDTH_16) &&
++			   !instr->ctx.data.force_8bit)
+ 			iowrite16_rep(gpiomtd->io, instr->ctx.data.buf.out,
+ 				      instr->ctx.data.len / 2);
+ 		else
+@@ -121,8 +151,19 @@
+ 		return 0;
+ 
+ 	case NAND_OP_WAITRDY_INSTR:
+-		if (!gpiomtd->rdy)
+-			return nand_soft_waitrdy(chip, instr->ctx.waitrdy.timeout_ms);
++		if (!gpiomtd->rdy) {
++			int ret = nand_soft_waitrdy(chip,
++						    instr->ctx.waitrdy.timeout_ms);
++
++			/*
++			 * The status reads are operations of their own, which
++			 * deselect the chip at their end. Select it again for
++			 * the rest of this operation.
++			 */
++			gpio_nand_dosync(gpiomtd);
++			gpiod_set_value(gpiomtd->nce, 0);
++			return ret;
++		}
+ 
+ 		return nand_gpio_waitrdy(chip, gpiomtd->rdy,
+ 					 instr->ctx.waitrdy.timeout_ms);
+@@ -315,6 +356,9 @@
+ 	if (ret)
+ 		return ret;
+ 
++	gpiomtd->bus_16bit = of_property_read_bool(dev->of_node,
++						   "gpio-control-nand,16bit-bus");
++
+ 	/* Just enable the chip */
+ 	gpiomtd->nce = devm_gpiod_get_optional(dev, "nce", GPIOD_OUT_HIGH);
+ 	if (IS_ERR(gpiomtd->nce))

@@ -209,6 +209,41 @@
 			};
 		};
 
+		/*
+		 * The 512 MB NAND (Micron MT29F4G08ABADA) without a NAND controller, as
+		 * in AVM's direct_avm.c with CONFIG_MTD_NAND_DIRECT_AVM_GPIO: data through
+		 * the bus at 0x1e000000, the control lines on GPIOs 16 (/CE), 18 (CLE)
+		 * and 19 (ALE). The 8 bit chip sits on the low byte of a 16 bit bus, so
+		 * it only answers 16 bit accesses (patch 0012). The ready line (GPIO 21)
+		 * is left out: writes to the bus are posted, so it still reads ready
+		 * before a command has reached the chip. Linux asks the chip for its
+		 * status over the bus instead, which keeps the order. AVM switches on
+		 * the chip's own ECC, so it is read with it here too. /WP (GPIO 20) is
+		 * left out and the partition is read only, so Linux can't write the
+		 * NAND yet.
+		 */
+		nand@1e000000 {
+			compatible = "gpio-control-nand";
+			reg = <0x1e000000 0x2>;
+			gpio-control-nand,16bit-bus;
+			nce-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
+			ale-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
+			cle-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+			nand-ecc-mode = "on-die";
+
+			partitions {
+				compatible = "fixed-partitions";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				partition@0 {
+					label = "nand";
+					reg = <0x0 0x20000000>;
+					read-only;
+				};
+			};
+		};
+
 		pci: pci@19170000 {
 			compatible = "ikanos,vx180-pci";
 			device_type = "pci";
