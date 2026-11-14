@@ -1,8 +1,6 @@
 # Linux 6.18 for the FRITZ!Box 7390
 
-Groundwork for milestone 1: a current kernel that boots from RAM to a first userspace program on the serial console.
-
-**Status:** The kernel boots from RAM on a real box, without a serial cable, and works as an access point: a laptop on the 2.4 GHz and on the 5 GHz WPA2 network got an address from the home router and reached the internet through a bridge to a USB Ethernet adapter (`../hardware/first-bridged-access-point-6.18.log`). PCI, read-only flash, `ath9k` and USB work. The bridge now reaches the home network through the LAN port instead of the USB adapter, and OpenWrt runs on this kernel. Nothing is installed yet: the kernel only runs from RAM.
+The kernel, the first userspace programs and the build of the images: a test image that runs from RAM, and OpenWrt images to test from RAM or to install. What was found out about the hardware is in `../DEVELOPMENT.md`.
 
 ## Firmware
 
@@ -13,7 +11,7 @@ The image needs files from AVM's firmware, which must not be published:
 
 Without the second one, `lan0` can't start. A test image without OpenWrt then has no network at all, so `build.sh` stops without it. An OpenWrt image can do without it: at its first start, `openwrt/files/etc/board.d/02_network` then sets OpenWrt's default network (`ucidef_set_wireless`) to `OpenWrt-7390-Setup-` and the last four hex digits of the LAN address, on 2.4 GHz, WPA2 with the fixed key `fritzbox7390-setup`, the only way onto the box until `avm-firmware-install` (below) has installed the firmware and removed that network again. The key is public, so anyone in range who knows it could take over the box while it waits for the firmware. A factory reset empties the overlay and with it the installed firmware, so the box comes up with the setup network again.
 
-They don't have to come from a box. `tools/fetch-avm-firmware.sh <directory>`, run inside `nix-shell`, downloads AVM's public firmware 06.88 for the 7390, checks its SHA256 and writes `bitfile.bit` and `ap-firmware/` there. It reads AVM's squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `tools/fix-avm-squashfs.c` has corrected AVM's metadata pointers. The files it wrote on 2026-11-08 were identical to those copied from a box.
+They don't have to come from a box. `tools/fetch-avm-firmware.sh <directory>`, run inside `nix-shell`, downloads AVM's public firmware 06.88 for the 7390, checks its SHA256 and writes `bitfile.bit` and `ap-firmware/` there, identical to the files copied from a box. It reads AVM's squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `tools/fix-avm-squashfs.c` has corrected AVM's metadata pointers.
 
 ```bash
 nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"
@@ -80,20 +78,9 @@ With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of
 
 ### Flash image
 
-With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, the OpenWrt files as squashfs padded to 6 MB, and the mark `0xdeadc0de` that starts `rootfs_data`. It fills at most the firmware area of 14.875 MB, see "Installing" in `../DEVELOPMENT.md`. The same file can be tested from RAM first (`test/openwrt-test.sh`), where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
+With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, the OpenWrt files as squashfs padded to 6 MB, and the mark `0xdeadc0de` that starts `rootfs_data`. It fills at most the firmware area of 14.875 MB, see "Flash layout of the installed image" in `../DEVELOPMENT.md`. The same file can be tested from RAM first (`test/openwrt-test.sh`), where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
 
 `RELEASE_IMAGE=1` builds the image to pass on, the one of the README's "Installing": a flash image with `TEST_DURATION_S=0`, OpenWrt's own defaults (`192.168.1.1` with DHCP, no root password) and the setup network, without `uci-defaults-test`, `test-diagnostics` and an SSH key, and without AVM's files. `build.sh` stops if `AP_FIRMWARE_DIR`, `BITFILE` or `SSH_PUBLIC_KEY` is set with it, so that none of them ends up in it by mistake. `TEST_DURATION_S` can still be set, for a test from RAM.
-
-## What was tested
-
-- The image tool accepts the kernel partition (`mtd1`) of a real box, including CRC and checksum. That image decompresses to the size in its header.
-- The kernel and the image build without warnings. The device tree and `/init` are in the kernel.
-- On the hardware with a laptop as client, with the test network open and without other clients: 20 of 20 pings at about 2 ms, TCP from the box at 32.8 Mbit/s and to the box at about 55 Mbit/s, at 130 Mbit/s link rate and 65 % signal. The PCI bridge stayed alive. This was one run of 12 s per direction.
-- USB Ethernet on the hardware, from a laptop on Wi-Fi through another access point: an ASIX AX88179 behind a VIA hub at 480 Mbit/s, 20 of 20 pings at about 2.8 ms, 48.6 Mbit/s from the box and about 11 Mbit/s to it, one run of 15 s per direction. The laptop's Wi-Fi may have limited both values. Telnet refused connections on this address, as intended.
-- Bridged access points on the hardware, with a laptop as the only client on one band at a time: address from the home router by DHCP, 8 of 8 pings each to the router, the box and the internet (about 15 ms), and an HTTPS download at 29.2 Mbit/s on 5 GHz and 27.4 Mbit/s on 2.4 GHz, at 130 Mbit/s link rate. One run of 12 s per band.
-- `init` runs under `qemu-mips`, with host `/proc` content, including the restart attempt at the end.
-- On the hardware: `tools/eva-ramboot.py` loaded the image over Wi-Fi from a machine in the same network, and `fusiv-ramlog` read the log under Freetz. The log shows the timer (about 250 interrupts per second) and UART interrupts through the interrupt controller. `memsize` was back to `0x08000000` after each test.
-- Not tested: Anything on the physical serial line, since no cable was connected. Whether the hardware watchdog resets the box, since no run hung.
 
 ## Testing without a console
 
@@ -104,7 +91,7 @@ The kernel contains bring-up aids in `linux/arch/mips/fusiv/bringup.c`:
 - **Memory marks:** Right before a restart the kernel marks the RAM every 64 KB. `fusiv-ramlog scan` shows which marks survive under Freetz.
 - **LEDs:** Internet = `prom_init` reached, Festnetz = interrupt setup reached, WLAN = timer setup reached, Info = timer interrupts work. All four on was confirmed on the hardware.
 - **Watchdog:** It runs from the start, so a hang should restart the box. Whether it really resets the chip is unconfirmed. If the box hangs, unplug it, which also loses the log.
-- **Automatic end:** `/init` restarts the box after `TEST_DURATION_S` seconds, 180 by default, and 0 keeps it running. A panic restarts it after 10 s. `TICK_S` and `STATUS_INTERVAL_S` set how often `/init` logs. A long run should raise them, because the RAM log stops when it is full.
+- **Automatic end:** `/init` restarts the box after `TEST_DURATION_S` seconds, by default 180 for the test image and 600 for OpenWrt images, and 0 keeps it running. A panic restarts it after 10 s. `TICK_S` and `STATUS_INTERVAL_S` set how often `/init` logs. A long run should raise them, because the RAM log stops when it is full.
 
 Procedure, from a machine with an address in `192.168.178.0/24` that reaches the box:
 
@@ -116,7 +103,7 @@ Procedure, from a machine with an address in `192.168.178.0/24` that reaches the
 
 `tools/eva-ramboot.py 192.168.178.1 reboot` leaves EVA if the box stays there.
 
-`test/box-test.sh <image> <log>` does all of this. Under Freetz, keep the cable to the home network out of LAN 1. With it in LAN 1 (AVM setting `ethmode = ethmode_bridge` on this box), Freetz was not reachable over the cable, so after the script switched off the radios the box looked hung, twice on 2026-11-08. LAN 4 works. Run it, like the other test scripts, inside `nix-shell`, which provides `python3`. The scripts reach the box through its installed firmware, see `test/box.sh`: with `INSTALLED_FIRMWARE=freetz` (the default) through the Freetz web interface, which needs `FREETZ_AUTH` (user:password), and with `INSTALLED_FIRMWARE=openwrt` over SSH, which needs `OPENWRT_KEY`. They also need `BOX_BSSID_PREFIX` (the start of the box's own BSSIDs, because the machine must not reach the network through them) and `RAMLOG_TOOL` (`../tools/fusiv-ramlog.c` built for the box). `test/cpu-cost.sh <log>` then prints how much data the LAN port received per second of softirq time, which varies less between runs than a single download. `test/flash-backup.sh` copies a flash partition, read only.
+`test/box-test.sh <image> <log>` does all of this. Under Freetz, keep the cable to the home network out of LAN 1. With it in LAN 1 (AVM setting `ethmode = ethmode_bridge` on this box), Freetz was not reachable over the cable, so after the script switched off the radios the box looked hung. LAN 4 works. Run it, like the other test scripts, inside `nix-shell`, which provides `python3`. The scripts reach the box through its installed firmware, see `test/box.sh`: with `INSTALLED_FIRMWARE=freetz` (the default) through the Freetz web interface, which needs `FREETZ_AUTH` (user:password), and with `INSTALLED_FIRMWARE=openwrt` over SSH, which needs `OPENWRT_KEY`. They also need `BOX_BSSID_PREFIX` (the start of the box's own BSSIDs, because the machine must not reach the network through them) and `RAMLOG_TOOL` (`../tools/fusiv-ramlog.c` built for the box). `test/cpu-cost.sh <log>` then prints how much data the LAN port received per second of softirq time, which varies less between runs than a single download. `test/flash-backup.sh` copies a flash partition, read only.
 
 `test/openwrt-test.sh <image> <SSH key> <prefix>` does the same for an OpenWrt test image: it waits for SSH at `192.168.0.250`, saves the output of `test-diagnostics` and the logs, and restarts the box into its installed firmware. If SSH never answers, the image restarts by itself after `TEST_DURATION_S`, and the RAM log then holds OpenWrt's log and the state report, readable with `test/read-ramlog.sh`. Only a kernel started from RAM writes the RAM log (`mtdram1=` on its command line), so an installed OpenWrt keeps the log of the test before it.
 
@@ -139,10 +126,6 @@ Requires the serial console. The kernel itself is only loaded into RAM, but `too
 
 `eva_ramboot.py` comes from [OpenWrt](https://github.com/openwrt/openwrt/blob/main/scripts/flashing/eva_ramboot.py).
 
-## Image size limit
-
-EVA stopped responding while receiving a 5.9 MB image and needed a power cycle, twice. A 3.2 MB image works. It may overwrite itself when an image reaches too far down from the top of RAM, but that is unconfirmed. Keep the image small or change the load address before going over this size.
-
 ## PCI bridge problems
 
 Both are handled in `patches/0003-ath9k-work-around-fusiv-pci-bridge.patch`. When they happen, the registers of the bridge itself read as zero, the chips stop answering, and the unserved Wi-Fi interrupt ends in `irq 25: nobody cared`.
@@ -152,19 +135,9 @@ Both are handled in `patches/0003-ath9k-work-around-fusiv-pci-bridge.patch`. Whe
 
 The chips get their real PCI ID in the first bus scan (`arch/mips/pci/pci-fusiv.c`), so `ath9k_pci_owl_loader` is not used. With the owl loader, the second chip read ID 0, which is explained by the first problem.
 
-## Running a test
-
-Test runs are not scripted in this repository, because they need the box's password. A run does this:
-
-1. Wait until the box has been up for 90 s, because `/sbin/reboot` is ignored early and sometimes later too, so repeat it until the box goes down.
-2. Run `ifconfig ath0 down` and `ifconfig ath1 down` on the box, so that a machine using the box's Wi-Fi moves to another access point. It can't see EVA through the box.
-3. Make sure that the machine has `192.168.178.2/24`. `nmcli dev modify wlp5s0 +ipv4.addresses 192.168.178.2/24` needs no root.
-   Occasionally a scan from the machine did not show the test networks during a whole run, although the box log showed `AP-ENABLED`. The cause is unknown, and repeating the run helped.
-4. Follow the procedure in "Testing without a console".
-
 ## USB power needs the FPGA
 
-The USB port only gets power after the board's Xilinx FPGA (Spartan XC3S250E) is programmed. Without that, EHCI and OHCI start and report port power, but no device is seen and interrupt 35 stays at zero. A keyboard with backlight showed it: it stays dark under Linux without the FPGA, and it lights up about 13 s after the start of the AVM kernel, when the firmware loads the FPGA. With the FPGA loaded by `/init`, Linux finds the keyboard (see the USB Ethernet log in `../hardware/`).
+The USB port only gets power after the board's Xilinx FPGA (Spartan XC3S250E) is programmed. Without that, EHCI and OHCI start and report port power, but no device is seen and interrupt 35 stays at zero. A keyboard with backlight showed it: it stays dark under Linux without the FPGA, and it lights up about 13 s after the start of the AVM kernel, when the firmware loads the FPGA. With the FPGA loaded, Linux finds the keyboard and USB devices (see the USB Ethernet log in `../hardware/`).
 
 The test image's `/init`, and `load-fpga` under OpenWrt, program the FPGA in slave serial mode through GPIOs (`PROG` 14, `CLK` 11, `DATA` 12, `DONE` 8). The bitstream belongs to AVM and is not in this repository. Copy `/lib/modules/bitfile.bit` from your own box and pass its path when building:
 
@@ -177,5 +150,3 @@ Without `BITFILE` the image builds and runs as before, but USB has no power, and
 `usbcore.autosuspend=-1` is also needed, because the controller otherwise stops with the root hub suspended.
 
 Under the AVM firmware the keyboard also goes off for about 3 s after coming on. The cause is unconfirmed. What the FPGA does besides USB power is unknown.
-
-The LEDs show boot progress as intended: with Linux running, all four are on, also with the AVM setting that turns them off in normal operation.

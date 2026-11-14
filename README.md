@@ -2,7 +2,7 @@
 
 A current Linux kernel (6.18) and OpenWrt 25.12 for the AVM FRITZ!Box Fon WLAN 7390, for use as an access point and switch behind an existing router. Unlike the AVM firmware, whose last update (06.88) is from 2023, it gets OpenWrt's security updates and its packages and settings, for example VLANs, several Wi-Fi networks or a guest network.
 
-> **Early state.** The image is installed and runs on one box since 2026-11-08. The steps below are the ones used there; nobody else has followed them yet.
+> **Early state.** OpenWrt runs installed on one box since 2026-11-08. Nobody else has followed these steps yet.
 
 This is an unofficial hobby project, tested on one box only. It is not affiliated with AVM or the OpenWrt project.
 
@@ -38,7 +38,7 @@ You need a Linux machine with [Nix](https://nixos.org/download/) for the build, 
 
 Before you start:
 
-- **Back up the AVM firmware** if you might want it back exactly as it is. With Freetz on the box, `kernel/test/flash-backup.sh` copies it, see "Installing" in `DEVELOPMENT.md`.
+- **Back up the AVM firmware** if you might want it back exactly as it is. With Freetz on the box, `kernel/test/flash-backup.sh` copies it, see "EVA: loading and flashing" in `DEVELOPMENT.md`.
 - **Copy what you need from the AVM internal storage.** The first start of OpenWrt erases the NAND that holds it, see "Settings and packages on the NAND".
 - **Download AVM's firmware 06.88** for the 7390, [`FRITZ.Box_Fon_WLAN_7390-06.88.image`](https://download.avm.de/fritzbox/fritzbox-7390/deutschland/fritz.os/FRITZ.Box_Fon_WLAN_7390-06.88.image). The box takes the firmware of its LAN port and, if you want USB, the FPGA bitstream from it. Get it now: the network through which you hand it to the box has no internet.
 
@@ -65,7 +65,7 @@ Flashing:
    ```
 
 5. Unplug the box's power, wait a few seconds and plug it in again. The tool writes the image (one to two minutes, don't cut the power) and restarts the box.
-6. Wait about three minutes. The power LED blinks while OpenWrt starts, then stays on. At the first start it blinks once more while OpenWrt sets up the space for its settings; the log line "failed to sync jffs2 overlay" from that step is harmless.
+6. Wait about three minutes. The power LED blinks while OpenWrt starts, then stays on. The first start takes a little longer, because it sets up the NAND for the settings.
 
 Installing AVM's files:
 
@@ -103,11 +103,11 @@ It leaves the NAND alone, and OpenWrt stays in the NOR flash, in three cases. Th
 
 - The NAND has UBI already, as after the first start.
 - OpenWrt's overlay in the NOR flash is in use: its settings move along only with an update that keeps them.
-- The NAND has UBI headers that UBI couldn't attach, for example after damage. To start over on the NAND, erase it by hand (`flash_erase` from the package `nand-utils` of `ath79/nand`, see `DEVELOPMENT.md`), and the next start sets it up again, with the settings of the first start.
+- The NAND has UBI headers that UBI couldn't attach, for example after damage. To start over on the NAND, erase it by hand (`flash_erase` from the package `nand-utils` of `ath79/nand`, see "NAND" in `DEVELOPMENT.md`), and the next start sets it up again, with the settings of the first start.
 
 ## Going back to the AVM firmware
 
-Write your backup of the AVM firmware the same way as the OpenWrt image, in steps 5 to 7, with the backup file instead of `build/fritzbox-7390-flash.bin`. This was done with the box's own backup. AVM's public firmware download should work as well, using `var/tmp/kernel.image` from inside it, but that is not tested. The NAND then still holds OpenWrt's UBI; whether the AVM firmware formats it again for its internal storage is not tested either.
+Write your backup of the AVM firmware the same way as the OpenWrt image, in steps 3 to 5, with the backup file instead of `build/fritzbox-7390-flash.bin`. This was done with the box's own backup. AVM's public firmware download should work as well, using `var/tmp/kernel.image` from inside it, but that is not tested. The NAND then still holds OpenWrt's UBI; whether the AVM firmware formats it again for its internal storage is not tested either.
 
 ## Development
 
