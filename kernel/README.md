@@ -54,7 +54,7 @@ With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.
 
 ### Building the release image
 
-The image of the releases, the one of the README's "Installing". For each tag, the workflow `../.github/workflows/release.yml` runs these steps on GitHub, with `nix-shell --pure`, and attaches the image to the release.
+The image of the releases, the one of the README's "Installing". For each published release, the workflow `../.github/workflows/release.yml` runs these steps on GitHub, with `nix-shell --pure`, and attaches the image to the release.
 
 1. Build the OpenWrt files as above.
 2. Build the image:

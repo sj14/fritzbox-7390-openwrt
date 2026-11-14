@@ -1,13 +1,11 @@
 # Builds the image to pass on (RELEASE_IMAGE=1 in kernel/build.sh, without
-# AVM's files) for a new tag or a published release, and attaches it to the
-# tag's release, together with its SHA256, the list of OpenWrt packages in it
+# AVM's files) for a published release and attaches it to the release,
+# together with its SHA256, the list of OpenWrt packages in it
 # and the EVA tool that flashes it. The README's "Installing" starts from these
 # files.
 name: Release image
 
 on:
-  push:
-    tags: ["*"]
   release:
     types: [published]
 
@@ -25,11 +23,6 @@ jobs:
       contents: write
       # For cache-nix-action to remove its older caches.
       actions: write
-    # A release made in the web interface may bring both events for one tag;
-    # the later run replaces the earlier one.
-    concurrency:
-      group: release-${{ github.ref_name }}
-      cancel-in-progress: true
     env:
       TAG: ${{ github.ref_name }}
     steps:
@@ -89,8 +82,4 @@ jobs:
           cp kernel/build/openwrt/packages.manifest "release/$name.manifest"
           cp kernel/tools/eva-ramboot.py release/eva-ramboot.py
           (cd release && sha256sum "$name.bin" > "$name.bin.sha256")
-          if ! gh release view "$TAG" > /dev/null 2>&1; then
-              gh release create "$TAG" --verify-tag --title "$TAG" \
-                  --notes "OpenWrt for the FRITZ!Box 7390, without AVM's files. How to install it: see \"Installing\" in the README."
-          fi
           gh release upload "$TAG" release/* --clobber
