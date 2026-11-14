@@ -71,12 +71,14 @@
 #define MAC_INTERRUPT_MASK	0xb000
 /*
  * The buffer manager answers its configuration once it has all 4080 buffers it
- * asks for, one per pass of the wait loop. A pass sleeps a whole tick (4 ms at
- * HZ=250), so that took 14.6 s in OpenWrt's preinit and longer than 15 s once
- * OpenWrt's services ran, when an image without AVM's files opens lan0 only
- * after the overlay with them is mounted: lan0 then failed with 3967 buffers.
+ * asks for, one at a time. A sleep of the wait loop lasts a whole tick (4 ms at
+ * HZ=250), so with one buffer per sleep that took 14.6 s in OpenWrt's preinit and
+ * longer than 15 s once OpenWrt's services ran. The loop now waits for the next
+ * request for up to BUFFER_REQUEST_WAIT_US before it sleeps, and the limit is
+ * generous, for the case that the buffer manager asks slowly after all.
  */
 #define CONFIG_WAIT_LIMIT_MS	60000
+#define BUFFER_REQUEST_WAIT_US	100
 
 #define CONFIG_BYTES		352
 #define QUEUE_COUNT		4
@@ -242,6 +244,19 @@ static void bmu_serve_requests(struct fusiv_eth *eth)
 	}
 }
 
+/* Waits up to BUFFER_REQUEST_WAIT_US for the buffer manager to ask for a buffer. */
+static bool bmu_wait_for_request(struct fusiv_eth *eth)
+{
+	unsigned int waited_us;
+
+	for (waited_us = 0; waited_us < BUFFER_REQUEST_WAIT_US; waited_us++) {
+		if (__raw_readw(eth->bmu + AP_INTERRUPT_STATUS) & STATUS_BUFFER_REQUEST)
+			return true;
+		udelay(1);
+	}
+	return false;
+}
+
 static int ap_send_config(struct fusiv_eth *eth, const char *name, void __iomem *ap,
 			  struct ap_memory *config)
 {
@@ -252,10 +267,14 @@ static int ap_send_config(struct fusiv_eth *eth, const char *name, void __iomem 
 	__raw_writew(CONFIG_EVENT_NEW, ap + AP_CONFIG_EVENT);
 
 	while (time_before(jiffies, deadline)) {
+		unsigned int buffers_before = eth->buffers_given;
+
 		if (!(__raw_readw(ap + AP_CONFIG_EVENT) & CONFIG_EVENT_NEW))
 			return 0;
 		bmu_serve_requests(eth);
-		usleep_range(50, 100);
+		/* Sleep unless it took a buffer and asks for the next one soon. */
+		if (eth->buffers_given == buffers_before || !bmu_wait_for_request(eth))
+			usleep_range(50, 100);
 	}
 	netdev_err(eth->netdev, "%s: no answer to its configuration, %u buffers given\n", name,
 		   eth->buffers_given);

@@ -117,7 +117,7 @@ With that, erasing all good blocks, `ubiformat` and UBIFS ran without a failure 
 
 `eth.c` loads AVM's firmware into two packet processors (APs) and drives them:
 
-- **Buffer manager** at `0x19210000`: it asks for free buffers one by one with status bit `0x1000`, 4080 in all, and only then answers its configuration. The wait loop gives one buffer per pass and a pass sleeps a whole tick (4 ms at HZ=250), so that takes about 15 s, longer under load. The limit is 60 s: with 15 s, `lan0` failed when it was opened while OpenWrt's services ran.
+- **Buffer manager** at `0x19210000`: it asks for free buffers one by one with status bit `0x1000`, about 4080 in all, and only then answers its configuration. It asks for the next one within microseconds, but a sleep lasts a whole tick (4 ms at HZ=250): with one buffer per sleep that took 15 s, longer under load, and `lan0` failed at the old limit of 15 s when it was opened while OpenWrt's services ran. The wait loop now waits up to 100 µs for the next request before it sleeps, and the buffers take about 0.1 s; the limit is 60 s.
 - **MAC processor** at `0x19260000`: it writes received buffers to four queues in RAM, whose indexes are in shared memory at `0x191f0040`. To send, the driver takes a buffer from `0x19210810`, fills the header, sets the first egress port to `0x19260510` and writes the address there. AVM forwards received packets to a third processor at `0x19100510`, which doesn't run here, so the configuration sends them to the host.
 - **Firmware:** `fusiv-bmu.bin` and `fusiv-eth.bin` come from AVM's modules, see `kernel/README.md`. OpenWrt's preinit opens `lan0` before the overlay is mounted, so firmware that lies only in the overlay (an image without AVM's files) fails there and works at netifd's later attempt.
 - **Switch:** the board's reset line (GPIO 0 pin 15, active low) holds it in reset until `/init` releases it. `/init` reads and sets it over MDIO at `0x19110080`. MDIO writes looked unreliable when they followed each other quickly (3 of 8 runs received nothing), so `/init` waits 0.5 ms after each command and logs what it reads back.
@@ -223,7 +223,6 @@ Without a console, the kernel's RAM log, the reboot status and the LEDs show how
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] Measure the UART pins and connect the console
 - [ ] Why the NAND's first probe fails after a power-on
-- [ ] Hand the buffer manager its buffers faster than one per tick
 
 ## Sources
 
