@@ -35,6 +35,15 @@
 #define SHARED_MEMORY_BASE	0x191f0000
 #define MAC_QUEUE_INDEXES	0x40
 
+/*
+ * The clocks of the buffer manager and of the first Ethernet block with its
+ * processor. A power-on leaves the buffer manager's processor clock off (the
+ * register reads 0xb5ff), and only EVA's network or AVM's firmware switched it
+ * on, which a restart keeps. Without it lan0 sends nothing.
+ */
+#define CLK_GATE_CONTROL	0x190000cc
+#define CLK_GATE_ETHERNET	(BIT(3) | BIT(4) | BIT(9) | BIT(10))
+
 #define AP_CONTROL		0x300
 #define AP_CONTROL_RESET	0x8000
 #define AP_CONTROL_RUN		0x4000
@@ -716,11 +725,21 @@ static const struct net_device_ops fusiv_eth_netdev_ops = {
 	.ndo_start_xmit = fusiv_eth_xmit,
 };
 
+/* Switches on the clocks that lan0 needs, whatever state the box started in. */
+static void fusiv_eth_enable_clocks(void)
+{
+	void __iomem *clk_gate = (void __iomem *)CKSEG1ADDR(CLK_GATE_CONTROL);
+
+	__raw_writel(__raw_readl(clk_gate) | CLK_GATE_ETHERNET, clk_gate);
+}
+
 static int fusiv_eth_probe(struct platform_device *pdev)
 {
 	struct net_device *netdev;
 	struct fusiv_eth *eth;
 	int ret;
+
+	fusiv_eth_enable_clocks();
 
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret)

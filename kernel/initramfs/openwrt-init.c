@@ -308,6 +308,39 @@ static void move_saved_settings(int ubi) {
     umount(VOLUME_MOUNT);
 }
 
+// After a power-on the NAND driver doesn't find the chip at its probe ("second ID
+// read did not match ff,ff against 2c,01"), but it does when it is bound again
+// later; found on 2026-11-14, when that worked 2 minutes after the start. Why is
+// not known: neither 50 resets before the scan, as AVM's driver does, nor
+// releasing GPIO 15 before the probe helped. A restart keeps the chip working,
+// which hid this. So while the NAND is missing, this binds the driver again, for
+// a few seconds. UBI attaches the NAND by itself once the driver found it.
+// Needs /proc and /sys.
+static void bind_nand_if_missing(void) {
+    enum { BIND_ATTEMPTS = 10, BIND_WAIT_S = 1 };
+    static const char BIND_PATH[] = "/sys/bus/platform/drivers/gpio-nand/bind";
+    static const char NAND_DEVICE[] = "1e000000.nand";
+    char line[96];
+
+    if (find_mtd(NAND_PARTITION) >= 0) {
+        return;
+    }
+    for (int attempt = 1; attempt <= BIND_ATTEMPTS; attempt++) {
+        FILE *bind = fopen(BIND_PATH, "w");
+        if (bind != NULL) {
+            fputs(NAND_DEVICE, bind);
+            fclose(bind);
+        }
+        if (find_mtd(NAND_PARTITION) >= 0) {
+            snprintf(line, sizeof(line), "NAND: found after binding the driver again, attempt %d\n", attempt);
+            log_line(line);
+            return;
+        }
+        sleep(BIND_WAIT_S);
+    }
+    log_line("NAND: not found, also after binding the driver again\n");
+}
+
 // OpenWrt's NAND boards come with a UBI volume rootfs_data for the overlay in
 // their image, which mount_root prefers to rootfs_data in the NOR flash. EVA
 // only writes the NOR flash, so at the first start from flash this erases the
@@ -418,6 +451,7 @@ static int switch_to_flash_root(bool *root_writable) {
     // Only from flash: a test from RAM must not change the flash.
     if (number >= 0 && !*root_writable) {
         mount("sysfs", "/sys", "sysfs", 0, NULL);
+        bind_nand_if_missing();
         prepare_nand_overlay();
         umount("/sys");
     }

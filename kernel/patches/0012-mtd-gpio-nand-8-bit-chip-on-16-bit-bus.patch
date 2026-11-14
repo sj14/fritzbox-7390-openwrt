@@ -1,26 +1,18 @@
 --- a/drivers/mtd/nand/raw/gpio.c
 +++ b/drivers/mtd/nand/raw/gpio.c
-@@ -38,6 +38,8 @@
+@@ -38,6 +38,7 @@
  	struct gpio_desc *ale;
  	struct gpio_desc *rdy;
  	struct gpio_desc *nwp; /* Optional write protection */
 +	bool bus_16bit; /* 8 bit chip on the low byte of a 16 bit bus */
-+	bool reset_at_probe; /* reset the chip repeatedly before the scan */
  };
  
  static inline struct gpiomtd *gpio_nand_getpriv(struct mtd_info *mtd)
-@@ -45,14 +47,43 @@
+@@ -45,14 +46,36 @@
  	return container_of(mtd_to_nand(mtd), struct gpiomtd, nand_chip);
  }
  
 +#define GPIO_NAND_MIN_WAITRDY_MS	100
-+/*
-+ * AVM's direct_avm.c resets the chip 50 times before it looks for it, and
-+ * waits for it to be ready after each reset. The first reset after power-on
-+ * takes the longest, up to 1 ms, so this waits that long after each one.
-+ */
-+#define GPIO_NAND_PROBE_RESETS		50
-+#define GPIO_NAND_PROBE_RESET_US	1000
  
 -#ifdef CONFIG_ARM
 +/*
@@ -55,7 +47,7 @@
   */
  static void gpio_nand_dosync(struct gpiomtd *gpiomtd)
  {
-@@ -65,7 +96,9 @@
+@@ -65,7 +88,9 @@
  		 * region with a dependency on that read.
  		 */
  		tmp = readl(gpiomtd->io_sync);
@@ -65,7 +57,7 @@
  	}
  }
  #else
-@@ -83,7 +116,7 @@
+@@ -83,7 +108,7 @@
  		gpio_nand_dosync(gpiomtd);
  		gpiod_set_value(gpiomtd->cle, 1);
  		gpio_nand_dosync(gpiomtd);
@@ -74,7 +66,7 @@
  		gpio_nand_dosync(gpiomtd);
  		gpiod_set_value(gpiomtd->cle, 0);
  		return 0;
-@@ -93,15 +126,20 @@
+@@ -93,15 +118,20 @@
  		gpiod_set_value(gpiomtd->ale, 1);
  		gpio_nand_dosync(gpiomtd);
  		for (i = 0; i < instr->ctx.addr.naddrs; i++)
@@ -98,7 +90,7 @@
  			ioread16_rep(gpiomtd->io, instr->ctx.data.buf.in,
  				     instr->ctx.data.len / 2);
  		else
-@@ -111,8 +149,13 @@
+@@ -111,8 +141,13 @@
  
  	case NAND_OP_DATA_OUT_INSTR:
  		gpio_nand_dosync(gpiomtd);
@@ -114,7 +106,7 @@
  			iowrite16_rep(gpiomtd->io, instr->ctx.data.buf.out,
  				      instr->ctx.data.len / 2);
  		else
-@@ -121,8 +164,28 @@
+@@ -121,8 +156,28 @@
  		return 0;
  
  	case NAND_OP_WAITRDY_INSTR:
@@ -145,38 +137,7 @@
  
  		return nand_gpio_waitrdy(chip, gpiomtd->rdy,
  					 instr->ctx.waitrdy.timeout_ms);
-@@ -282,6 +345,30 @@
- 		gpiod_set_value(gpiomtd->nce, 0);
- }
- 
-+/*
-+ * The Micron MT29F of the AVM FRITZ!Box 7390 often doesn't answer after
-+ * power-on: at a cold start its ID read back as garbage, while it was found
-+ * after a restart. AVM's driver resets it repeatedly before it looks for it,
-+ * "speziell der MT29F hat Probleme, nach einem Kaltstart den Dienst
-+ * aufzunehmen", so this does the same.
-+ */
-+static void gpio_nand_reset_repeatedly(struct gpiomtd *gpiomtd)
-+{
-+	int i;
-+
-+	for (i = 0; i < GPIO_NAND_PROBE_RESETS; i++) {
-+		gpio_nand_dosync(gpiomtd);
-+		gpiod_set_value(gpiomtd->nce, 0);
-+		gpiod_set_value(gpiomtd->cle, 1);
-+		gpio_nand_dosync(gpiomtd);
-+		gpio_nand_write_byte(gpiomtd, NAND_CMD_RESET);
-+		gpio_nand_dosync(gpiomtd);
-+		gpiod_set_value(gpiomtd->cle, 0);
-+		gpiod_set_value(gpiomtd->nce, 1);
-+		usleep_range(GPIO_NAND_PROBE_RESET_US, 2 * GPIO_NAND_PROBE_RESET_US);
-+	}
-+}
-+
- static int gpio_nand_probe(struct platform_device *pdev)
- {
- 	struct gpiomtd *gpiomtd;
-@@ -306,15 +393,25 @@
+@@ -306,15 +361,23 @@
  
  	res = gpio_nand_get_io_sync(pdev);
  	if (res) {
@@ -199,19 +160,7 @@
  
 +	gpiomtd->bus_16bit = of_property_read_bool(dev->of_node,
 +						   "gpio-control-nand,16bit-bus");
-+	gpiomtd->reset_at_probe = of_property_read_bool(dev->of_node,
-+							"gpio-control-nand,reset-at-probe");
 +
  	/* Just enable the chip */
  	gpiomtd->nce = devm_gpiod_get_optional(dev, "nce", GPIOD_OUT_HIGH);
  	if (IS_ERR(gpiomtd->nce))
-@@ -368,6 +465,9 @@
- 	 */
- 	chip->ecc.engine_type = NAND_ECC_ENGINE_TYPE_SOFT;
- 
-+	if (gpiomtd->reset_at_probe)
-+		gpio_nand_reset_repeatedly(gpiomtd);
-+
- 	ret = nand_scan(chip, 1);
- 	if (ret)
- 		goto err_wp;

@@ -29,6 +29,10 @@ static const struct reg regs[] = {
     {"CLK_GATE_CONTROL", 0x190000cc},
     {"MODE_STATUS", 0x190000d0},
     {"PAD_PIO_MISC_CTRL", 0x190000d4},
+    // The asynchronous memory controller, with the NOR flash and the NAND.
+    {"AMC_AMGCTL", 0x19148000},
+    {"AMC_AMBCTL0", 0x19148004},
+    {"AMC_AMBCTL1", 0x19148008},
     {"GPIO0_DIR", 0x19040000},
     {"GPIO0_FLAG", 0x19040004},
     {"GPIO0_IRQ_ENABLE", 0x19040008},
