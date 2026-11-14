@@ -1,10 +1,10 @@
 #!/bin/sh
-# Takes the firmware of the packet processors, without which lan0 can't start,
-# out of AVM's public firmware 06.88 for the FRITZ!Box 7390 and installs it in
-# /lib/firmware, where it survives a sysupgrade (/lib/upgrade/keep.d). The same
-# steps as tools/fetch-avm-firmware.sh in the repository, on the box. Then it
-# removes the setup network that /etc/board.d/02_network brought up because the
-# firmware was missing, and restarts the network.
+# Installs the firmware of the packet processors, without which lan0 can't start,
+# from AVM's public firmware 06.88 for the FRITZ!Box 7390 in /lib/firmware, where
+# it survives a sysupgrade (/lib/upgrade/keep.d). Then it removes the setup
+# network that /etc/board.d/02_network brought up because the firmware was
+# missing, and restarts the network. /usr/libexec/avm-firmware/extract takes the
+# files out of AVM's image.
 #
 # With --usb it also installs the FPGA bitstream, which powers the USB port, and
 # loads it; /etc/init.d/fpga loads it at every start. Once loaded, the FPGA also
@@ -12,23 +12,11 @@
 #
 # Usage: avm-firmware-install [--usb] < FRITZ.Box_Fon_WLAN_7390-06.88.image
 # From another machine: ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
-#
-# The image is read from stdin and never stored: sha256sum checks it while tar
-# passes kernel.image on, so that only AVM's squashfs (14 MB) lies in /tmp. That
-# also fits into the RAM of a test image. Nothing is installed unless the
-# checksum matches.
 set -eu -o pipefail
+. /lib/functions/fritzbox7390-setup.sh
 
-FIRMWARE_SHA256=35cf96b6d9417c46bdf227a7b2beb0d9c39df0c9dc6eff6c39c30c9c27819ae5
-TOOLS=/usr/libexec/avm-firmware
 FIRMWARE_DIR=/lib/firmware
 WORK=/tmp/avm-firmware
-# The same as SETUP_SSID_PREFIX in /etc/board.d/02_network.
-SETUP_SSID_PREFIX=OpenWrt-7390-Setup-
-MODULES=lib/modules/2.6.28.10/kernel/fusiv_src/kernel
-BMU_MODULE=$MODULES/ap_code/lib/fusivlib_lkm.ko
-ETH_MODULE=$MODULES/drivers/ethdriver/ethdriver_lkm.ko
-BITSTREAM=lib/modules/bitfile.bit
 USAGE="Usage: avm-firmware-install [--usb] < FRITZ.Box_Fon_WLAN_7390-06.88.image"
 
 with_usb=
@@ -57,38 +45,14 @@ install_firmware() {
 }
 
 rm -rf -- /tmp/avm-firmware
-mkdir -m 700 "$WORK"
 trap 'rm -rf -- /tmp/avm-firmware' EXIT
-
-echo "Reading AVM's firmware image"
-mkfifo "$WORK/image"
-sha256sum < "$WORK/image" > "$WORK/image.sha256" &
-checksum_pid=$!
-# tar stops at the end of the archive. cat reads what may follow, so that
-# sha256sum sees the whole input.
-tee "$WORK/image" | { tar -xOf - ./var/tmp/kernel.image; cat > /dev/null; } |
-    "$TOOLS/fix-avm-squashfs" - "$WORK/rootfs.squashfs"
-wait "$checksum_pid"
-read -r checksum rest < "$WORK/image.sha256"
-if [ "$checksum" != "$FIRMWARE_SHA256" ]; then
-    echo "This is not AVM's firmware 06.88 for the FRITZ!Box Fon WLAN 7390: SHA256 $checksum" >&2
-    exit 1
-fi
-
-echo "Taking the firmware out of AVM's modules"
-wanted="$BMU_MODULE $ETH_MODULE"
-[ -n "$with_usb" ] && wanted="$wanted $BITSTREAM"
-"$TOOLS/unsquashfs3-multi" -f -d "$WORK/root" "$WORK/rootfs.squashfs" $wanted > /dev/null
-rm -f -- "$WORK/rootfs.squashfs"
-"$TOOLS/extract-ap-firmware" "$WORK/root/$BMU_MODULE" BMUAP "$WORK/fusiv-bmu.bin"
-"$TOOLS/extract-ap-firmware" "$WORK/root/$ETH_MODULE" ETHAP "$WORK/fusiv-eth.bin"
+/usr/libexec/avm-firmware/extract "$WORK"
 
 lan_changed=
 install_firmware fusiv-bmu.bin && lan_changed=1
 install_firmware fusiv-eth.bin && lan_changed=1
 fpga_changed=
 if [ -n "$with_usb" ]; then
-    cp "$WORK/root/$BITSTREAM" "$WORK/fpga.bit"
     install_firmware fpga.bit && fpga_changed=1
 fi
 sync

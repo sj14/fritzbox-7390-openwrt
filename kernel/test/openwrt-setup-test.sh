@@ -4,43 +4,30 @@
 # on 2.4 GHz, installs the firmware there with avm-firmware-install from AVM's
 # image, returns to the previous network and checks that the image now answers
 # over the LAN. Then it restarts the image, so that the box returns to its
-# installed firmware.
-# Usage: openwrt-setup-test.sh <image> <SSH key> <AVM firmware image> <output prefix>
+# installed OpenWrt.
+# Usage: openwrt-setup-test.sh <image> <AVM firmware image> <output prefix>
 #
-# Needs the variables of box-test.sh except RAMLOG_TOOL; OPENWRT_ADDRESS is the
-# address of the installed OpenWrt. SETUP_SSID is the name of the setup network:
+# Needs the variables of openwrt.sh and eva.sh. SETUP_SSID is the name of the
+# setup network:
 # OpenWrt-7390-Setup- and the last four hex digits of the LAN address in capitals,
 # for example OpenWrt-7390-Setup-B68E for 34:31:c4:bb:b6:8e. It is given rather
 # than scanned for, because this machine's brcmfmac lists only the access point it
-# is connected to. The test image comes up at TEST_ADDRESS (default 192.168.0.250,
-# from openwrt/uci-defaults-test) and accepts the given key, which may also be the
-# public half of a key in the SSH agent. While it tries the setup network, this
-# machine is off the home network, for a few minutes at most. INSTALL_ARGS go to
-# avm-firmware-install, for example --usb.
+# is connected to. While it tries the setup network, this machine is off the home
+# network, for a few minutes at most. INSTALL_ARGS go to avm-firmware-install,
+# for example --usb.
 set -u
 TEST_DIR=$(cd "$(dirname "$0")" && pwd)
 IMAGE=$1
-OPENWRT_KEY=$2
-AVM_IMAGE=$3
-OUT=$4
-TEST_ADDRESS=${TEST_ADDRESS:-192.168.0.250}
+AVM_IMAGE=$2
+OUT=$3
 : "${SETUP_SSID:?set SETUP_SSID to the name of the setup network, see above}"
-# The setup network of openwrt/files/etc/board.d/02_network. The test image
-# serves no DHCP, so this machine takes a fixed address there.
-SETUP_KEY=fritzbox7390-setup
+# The setup network's key. The test image serves no DHCP, so this machine takes
+# a fixed address there.
+. "$TEST_DIR/../openwrt/files/lib/functions/fritzbox7390-setup.sh"
 SETUP_CONNECTION=fritzbox7390-setup-test
 SETUP_LOCAL_ADDRESS=192.168.0.199/24
 . "$TEST_DIR/openwrt.sh"
-. "$TEST_DIR/box.sh"
 . "$TEST_DIR/eva.sh"
-
-test_image_ssh() {
-    OPENWRT_ADDRESS=$TEST_ADDRESS openwrt_ssh "$@"
-}
-
-test_image_wait() {
-    OPENWRT_ADDRESS=$TEST_ADDRESS openwrt_wait "$@"
-}
 
 # Puts this machine back on the network it was on before the test.
 home_connection=$(nmcli -g GENERAL.CONNECTION dev show "$WIFI_DEVICE")
@@ -95,7 +82,5 @@ test_image_ssh test-diagnostics > "$OUT.state" 2>&1
 test_image_ssh 'dmesg; logread' > "$OUT.log" 2>&1
 test_image_ssh reboot
 
-# The installed OpenWrt comes back at its own address.
-sleep 20
-box_wait "${BOX_WAIT:-600}" || { echo "the installed firmware did not come back"; exit 3; }
-echo "the installed firmware is back"
+box_wait "${BOX_WAIT:-600}" || { echo "the installed OpenWrt did not come back"; exit 3; }
+echo "the installed OpenWrt is back"

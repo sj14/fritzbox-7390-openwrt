@@ -21,34 +21,6 @@ void log_line(const char *line) {
     }
 }
 
-// Reports in the AVM reboot status that /init really ran, because this text
-// survives the reset. The firmware then shows "watchdog".
-void report_init_ran(void) {
-    enum { MAILBOX_PAGE = 0x00fff000, MAILBOX_OFFSET = 0xe00, PAGE_SIZE_BYTES = 4096 };
-    static const char status[] =
-        "(c) AVM 2013, Reboot Status is: Software-NMI-Watchdog"
-        "(c) AVM 2013, Reboot Status is: Software-NMI-Watchdog"
-        "(c) AVM 2013, Reboot Status is: Software-NMI-Watchdog";
-
-    int fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (fd < 0) {
-        log_line("cannot open /dev/mem\n");
-        return;
-    }
-
-    char *page = mmap(NULL, PAGE_SIZE_BYTES, PROT_READ | PROT_WRITE, MAP_SHARED, fd, MAILBOX_PAGE);
-    if (page == MAP_FAILED) {
-        log_line("cannot map the status mailbox\n");
-    } else {
-        volatile char *mailbox = page + MAILBOX_OFFSET;
-        for (size_t i = 0; i < sizeof(status); i++) {
-            mailbox[i] = status[i];
-        }
-        munmap(page, PAGE_SIZE_BYTES);
-    }
-    close(fd);
-}
-
 // Access to the AR8316 switch through the MDIO registers of the first Ethernet
 // block. EVA has already set up this block to load images over the network.
 enum {
@@ -68,7 +40,7 @@ enum {
 
 static volatile char *ethernet_registers;
 
-unsigned int register_at(volatile char *base, unsigned int offset) {
+static unsigned int register_at(volatile char *base, unsigned int offset) {
     return *(volatile unsigned int *)(base + offset);
 }
 
@@ -208,35 +180,6 @@ void configure_switch(void) {
 }
 
 // Logs the link of each switch PHY as the PHY negotiated it.
-void log_link_speeds(void) {
-    enum {
-        PHY_SPECIFIC_STATUS = 0x11,
-        STATUS_LINK = 1 << 10,
-        STATUS_RESOLVED = 1 << 11,
-        STATUS_FULL_DUPLEX = 1 << 13,
-        STATUS_SPEED_SHIFT = 14,
-    };
-    static const char *const SPEEDS[] = {"10", "100", "1000", "unknown"};
-    char line[96];
-
-    if (ethernet_registers == NULL) {
-        return;
-    }
-    for (unsigned int phy = 0; phy < SWITCH_PHYS; phy++) {
-        int status = mdio_read(phy, PHY_SPECIFIC_STATUS);
-        if (status == MDIO_FAILED) {
-            snprintf(line, sizeof(line), "link: phy %u cannot be read\n", phy);
-        } else if (!(status & STATUS_LINK) || !(status & STATUS_RESOLVED)) {
-            snprintf(line, sizeof(line), "link: phy %u down (0x%04x)\n", phy, status);
-        } else {
-            snprintf(line, sizeof(line), "link: phy %u %s Mbit/s %s duplex (0x%04x)\n", phy,
-                     SPEEDS[(status >> STATUS_SPEED_SHIFT) & 0x3],
-                     (status & STATUS_FULL_DUPLEX) ? "full" : "half", status);
-        }
-        log_line(line);
-    }
-}
-
 // Logs the switch identity. The Ethernet block stays unmapped if its clocks are
 // off, because reading a block without a clock can hang the bus.
 void log_switch_identity(void) {

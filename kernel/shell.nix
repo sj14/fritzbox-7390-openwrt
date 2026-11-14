@@ -21,6 +21,9 @@ pkgs.mkShell {
     pkgs.xz
     pkgs.zstd
     pkgs.zig
+    # Take AVM's files apart, for tools/fetch-avm-firmware.sh.
+    (import ./unsquashfs-avm.nix { inherit pkgs; })
+    (import ./avm-firmware-tools.nix { inherit pkgs; })
     # OpenWrt's ImageBuilder checks for these on the host, besides those that
     # mkShell brings (coreutils, gawk, grep, tar, gzip, bzip2, patch, gcc).
     pkgs.file
@@ -30,13 +33,6 @@ pkgs.mkShell {
     pkgs.wget
     pkgs.which
   ];
-
-  # A static MIPS build, which goes into the initramfs.
-  HOSTAPD = "${import ./hostapd.nix { inherit pkgs; }}/bin/hostapd";
-
-  # Reads the root file system of AVM's firmware, for tools/fetch-avm-firmware.sh.
-  UNSQUASHFS_AVM = "${import ./unsquashfs-avm.nix { inherit pkgs; }}/bin/unsquashfs3-multi";
-  AVM_FIRMWARE_TOOLS = "${import ./avm-firmware-tools.nix { inherit pkgs; }}/bin";
 
   # The same tools built for the box, for avm-firmware-install in the OpenWrt image.
   UNSQUASHFS_AVM_BOX = "${import ./unsquashfs-avm.nix { pkgs = mips.pkgsStatic; }}/bin/unsquashfs3-multi";

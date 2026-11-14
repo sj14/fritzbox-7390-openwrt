@@ -308,14 +308,10 @@ static void move_saved_settings(int ubi) {
     umount(VOLUME_MOUNT);
 }
 
-// After a power-on the NAND driver doesn't find the chip at its probe ("second ID
-// read did not match ff,ff against 2c,01"), but it does when it is bound again
-// later; found on 2026-11-14, when that worked 2 minutes after the start. Why is
-// not known: neither 50 resets before the scan, as AVM's driver does, nor
-// releasing GPIO 15 before the probe helped. A restart keeps the chip working,
-// which hid this. So while the NAND is missing, this binds the driver again, for
-// a few seconds. UBI attaches the NAND by itself once the driver found it.
-// Needs /proc and /sys.
+// After a power-on the NAND driver doesn't find the chip at its first probe, but
+// does when it is bound again (see "NAND" in DEVELOPMENT.md). So while the NAND
+// is missing, this binds the driver again, for a few seconds. UBI attaches the
+// NAND by itself once the driver found it. Needs /proc and /sys.
 static void bind_nand_if_missing(void) {
     enum { BIND_ATTEMPTS = 10, BIND_WAIT_S = 1 };
     static const char BIND_PATH[] = "/sys/bus/platform/drivers/gpio-nand/bind";

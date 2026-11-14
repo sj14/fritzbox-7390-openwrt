@@ -1,0 +1,59 @@
+#!/bin/sh
+# Takes the files that the box needs out of AVM's public firmware 06.88 for the
+# FRITZ!Box 7390 and writes them to a directory: fusiv-bmu.bin and fusiv-eth.bin,
+# the firmware of the packet processors, without which lan0 can't start, and
+# fpga.bit, the FPGA bitstream that powers USB. They may not be passed on.
+#
+# Usage: extract <output directory> < FRITZ.Box_Fon_WLAN_7390-06.88.image
+#
+# The same steps on the box (avm-firmware-install) and on the build machine
+# (tools/fetch-avm-firmware.sh). The tools come from this script's directory, as
+# on the box (/usr/libexec/avm-firmware), or else from the PATH, as in nix-shell.
+#
+# The image is read from stdin and never stored: sha256sum checks it while tar
+# passes kernel.image on, so that only AVM's squashfs (14 MB) lies in the output
+# directory for a moment. That also fits into the RAM of the box. Nothing is
+# written unless the checksum matches.
+set -eu -o pipefail
+
+FIRMWARE_SHA256=35cf96b6d9417c46bdf227a7b2beb0d9c39df0c9dc6eff6c39c30c9c27819ae5
+MODULES=lib/modules/2.6.28.10/kernel/fusiv_src/kernel
+BMU_MODULE=$MODULES/ap_code/lib/fusivlib_lkm.ko
+ETH_MODULE=$MODULES/drivers/ethdriver/ethdriver_lkm.ko
+BITSTREAM=lib/modules/bitfile.bit
+
+if [ $# -ne 1 ] || [ -t 0 ]; then
+    echo "Usage: extract <output directory> < FRITZ.Box_Fon_WLAN_7390-06.88.image" >&2
+    exit 2
+fi
+OUT=$1
+WORK=$OUT/work
+PATH=$(cd "$(dirname "$0")" && pwd):$PATH
+
+mkdir -p "$OUT"
+rm -rf -- "$OUT/work"
+mkdir -m 700 "$WORK"
+trap 'rm -rf -- "$OUT/work"' EXIT
+
+echo "Reading AVM's firmware image"
+mkfifo "$WORK/image"
+sha256sum < "$WORK/image" > "$WORK/image.sha256" &
+checksum_pid=$!
+# tar stops at the end of the archive. cat reads what may follow, so that
+# sha256sum sees the whole input.
+tee "$WORK/image" | { tar -xOf - ./var/tmp/kernel.image; cat > /dev/null; } |
+    fix-avm-squashfs - "$WORK/rootfs.squashfs"
+wait "$checksum_pid"
+read -r checksum rest < "$WORK/image.sha256"
+if [ "$checksum" != "$FIRMWARE_SHA256" ]; then
+    echo "This is not AVM's firmware 06.88 for the FRITZ!Box Fon WLAN 7390: SHA256 $checksum" >&2
+    exit 1
+fi
+
+echo "Taking the files out of AVM's root file system"
+unsquashfs3-multi -f -d "$WORK/root" "$WORK/rootfs.squashfs" "$BMU_MODULE" "$ETH_MODULE" "$BITSTREAM" > /dev/null
+rm -f -- "$WORK/rootfs.squashfs"
+extract-ap-firmware "$WORK/root/$BMU_MODULE" BMUAP "$OUT/fusiv-bmu.bin"
+extract-ap-firmware "$WORK/root/$ETH_MODULE" ETHAP "$OUT/fusiv-eth.bin"
+cp "$WORK/root/$BITSTREAM" "$OUT/fpga.bit"
+chmod 600 "$OUT/fusiv-bmu.bin" "$OUT/fusiv-eth.bin" "$OUT/fpga.bit"

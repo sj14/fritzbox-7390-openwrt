@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Builds an EVA image of the kernel for the FRITZ!Box 7390.
-# Run it inside "nix-shell". BUILD_DIR selects where the kernel is unpacked.
+# Builds an OpenWrt image for the FRITZ!Box 7390: an EVA image of the kernel
+# with OPENWRT_ROOTFS, the root directory of an OpenWrt image from the
+# ImageBuilder (tools/fetch-openwrt-rootfs.sh), in its initramfs, to test from
+# RAM, or with FLASH_IMAGE=1 a flash image to install. Run it inside
+# "nix-shell". BUILD_DIR selects where the kernel is unpacked.
 set -euo pipefail
 
 KERNEL_VERSION=6.18.62
@@ -12,14 +15,7 @@ BUILD_DIR=${BUILD_DIR:-$SOURCE_DIR/build}
 TARBALL=$BUILD_DIR/linux-$KERNEL_VERSION.tar.xz
 TREE=$BUILD_DIR/linux-$KERNEL_VERSION-fusiv
 MAKE_ARGS=(ARCH=mips "CROSS_COMPILE=${CROSS_COMPILE:-mips-unknown-linux-musl-}" -j"$(nproc)")
-# Without the firmware of the packet processors lan0 can not start. An OpenWrt
-# image can do without it: it then comes up with a setup network on 2.4 GHz,
-# through which avm-firmware-install takes it from AVM's image on the box. A test
-# image without OpenWrt would have no network at all. See "Firmware" in the README.
-if [ -z "${AP_FIRMWARE_DIR:-}" ] && [ -z "${OPENWRT_ROOTFS:-}" ]; then
-    echo "set AP_FIRMWARE_DIR to the directory with fusiv-bmu.bin and fusiv-eth.bin" >&2
-    exit 1
-fi
+: "${OPENWRT_ROOTFS:?set OPENWRT_ROOTFS to the root directory that tools/fetch-openwrt-rootfs.sh prints}"
 
 # RELEASE_IMAGE=1 builds the image to pass on: a flash image of OpenWrt with
 # OpenWrt's own defaults (192.168.1.1 with DHCP, no root password, only the setup
@@ -31,7 +27,6 @@ if [ -n "${RELEASE_IMAGE:-}" ]; then
         echo "A release image has none of AVM's files and no SSH key: leave out AP_FIRMWARE_DIR, BITFILE and SSH_PUBLIC_KEY" >&2
         exit 1
     fi
-    : "${OPENWRT_ROOTFS:?RELEASE_IMAGE needs OPENWRT_ROOTFS}"
     FLASH_IMAGE=1
     TEST_DURATION_S=${TEST_DURATION_S:-0}
 fi
@@ -57,31 +52,18 @@ for patch_file in "$SOURCE_DIR"/patches/*.patch; do
 done
 cp -r "$SOURCE_DIR/linux/." "$TREE/"
 
-# The first userspace program. With OPENWRT_ROOTFS, the root directory of an
-# OpenWrt image from the ImageBuilder, it only prepares the hardware and starts
-# OpenWrt's init.
-INIT_SOURCE=$SOURCE_DIR/initramfs/init.c
-DEFAULT_TEST_DURATION_S=180
-if [ -n "${OPENWRT_ROOTFS:-}" ]; then
-    INIT_SOURCE=$SOURCE_DIR/initramfs/openwrt-init.c
-    DEFAULT_TEST_DURATION_S=600
-fi
-zig cc -target mips-linux-musleabi -mcpu=mips32r2 -static -Os -s -Wall \
-    -DTEST_DURATION_S="${TEST_DURATION_S:-$DEFAULT_TEST_DURATION_S}" \
-    -DTICK_S="${TICK_S:-15}" \
-    -DSTATUS_INTERVAL_S="${STATUS_INTERVAL_S:-120}" \
-    -o "$BUILD_DIR/init" "$INIT_SOURCE" "$SOURCE_DIR/initramfs/board.c"
-# The test networks are connected to the home network, so their password is random
-# and stays out of the repository.
-PASSWORD_FILE=$BUILD_DIR/wifi-password
-if [ ! -f "$PASSWORD_FILE" ]; then
-    head -c 24 /dev/urandom | base64 | tr -d '/+=' > "$PASSWORD_FILE"
-    chmod 600 "$PASSWORD_FILE"
-fi
-for band in 2ghz 5ghz; do
-    sed "s|@PASSWORD@|$(cat "$PASSWORD_FILE")|" "$SOURCE_DIR/initramfs/hostapd-$band.conf" > "$BUILD_DIR/hostapd-$band.conf"
-    chmod 600 "$BUILD_DIR/hostapd-$band.conf"
-done
+# Builds a static program for the box from the given C files.
+# Usage: build_for_box <output> <C file>...
+build_for_box() {
+    local output=$1
+    shift
+    zig cc -target mips-linux-musleabi -mcpu=mips32r2 -static -Os -s -Wall -o "$output" "$@"
+}
+
+# The first userspace program: it prepares the hardware and starts OpenWrt's
+# init. A test image restarts the box after TEST_DURATION_S, 0 keeps it running.
+build_for_box "$BUILD_DIR/init" -DTEST_DURATION_S="${TEST_DURATION_S:-600}" \
+    "$SOURCE_DIR/initramfs/openwrt-init.c" "$SOURCE_DIR/initramfs/board.c"
 
 cat > "$TREE/initramfs.list" <<LIST
 dir /dev 755 0 0
@@ -102,86 +84,74 @@ file /lib/firmware/regulatory.db $REGDB/regulatory.db 644 0 0
 file /init $BUILD_DIR/init 755 0 0
 LIST
 
-# An OpenWrt image gets a copy of OPENWRT_ROOTFS with the files of this repository
-# on top. A test image carries it in the initramfs. With FLASH_IMAGE=1 it becomes
+# The image gets a copy of OPENWRT_ROOTFS with the files of this repository on
+# top. A test image carries it in the initramfs. With FLASH_IMAGE=1 it becomes
 # the squashfs of an installed image instead, and the initramfs keeps only /init.
 OPENWRT_ROOT=$BUILD_DIR/openwrt-root
-if [ -n "${FLASH_IMAGE:-}" ] && [ -z "${OPENWRT_ROOTFS:-}" ]; then
-    echo "FLASH_IMAGE needs OPENWRT_ROOTFS" >&2
-    exit 1
-fi
-if [ -n "${OPENWRT_ROOTFS:-}" ]; then
-    rm -rf -- "$OPENWRT_ROOT"
-    cp -a "$OPENWRT_ROOTFS" "$OPENWRT_ROOT"
-fi
+rm -rf -- "$OPENWRT_ROOT"
+cp -a "$OPENWRT_ROOTFS" "$OPENWRT_ROOT"
 
-# Adds a file to the image: to the OpenWrt files, or else to the initramfs list.
-# Usage: add_file <path on the box> <source> <mode>
+# Adds a file to the OpenWrt files. Usage: add_file <path on the box> <source> <mode>
 add_file() {
-    if [ -n "${OPENWRT_ROOTFS:-}" ]; then
-        install -D -m "$3" "$2" "$OPENWRT_ROOT$1"
-    else
-        echo "file $1 $2 $3 0 0" >> "$TREE/initramfs.list"
-    fi
+    install -D -m "$3" "$2" "$OPENWRT_ROOT$1"
 }
 
-if [ -z "${OPENWRT_ROOTFS:-}" ]; then
-    cat >> "$TREE/initramfs.list" <<LIST
-file /etc/hostapd-2ghz.conf $BUILD_DIR/hostapd-2ghz.conf 600 0 0
-file /etc/hostapd-5ghz.conf $BUILD_DIR/hostapd-5ghz.conf 600 0 0
-dir /usr 755 0 0
-dir /usr/sbin 755 0 0
-file /usr/sbin/hostapd $HOSTAPD 755 0 0
-LIST
-else
-    if [ -z "${RELEASE_IMAGE:-}" ]; then
-        # The root password of the test image is random as well. SSH_PUBLIC_KEY
-        # may name a key that may log in.
-        ROOT_PASSWORD_FILE=$BUILD_DIR/root-password
-        if [ ! -f "$ROOT_PASSWORD_FILE" ]; then
-            head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$ROOT_PASSWORD_FILE"
-            chmod 600 "$ROOT_PASSWORD_FILE"
-        fi
-        sed -e "s|@WIFI_PASSWORD@|$(cat "$PASSWORD_FILE")|g" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|g" \
-            "$SOURCE_DIR/openwrt/uci-defaults-test" > "$BUILD_DIR/uci-defaults-test"
-        chmod 600 "$BUILD_DIR/uci-defaults-test"
-        add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
-        add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
-        if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
-            add_file /etc/dropbear/authorized_keys "$SSH_PUBLIC_KEY" 600
-        fi
+if [ -z "${RELEASE_IMAGE:-}" ]; then
+    # openwrt/uci-defaults-test sets the box up as an access point in the home
+    # network, so the password of its Wi-Fi networks and of root is random and
+    # stays out of the repository. SSH_PUBLIC_KEY may name a key that may log in.
+    WIFI_PASSWORD_FILE=$BUILD_DIR/wifi-password
+    ROOT_PASSWORD_FILE=$BUILD_DIR/root-password
+    if [ ! -f "$WIFI_PASSWORD_FILE" ]; then
+        head -c 24 /dev/urandom | base64 | tr -d '/+=' > "$WIFI_PASSWORD_FILE"
+        chmod 600 "$WIFI_PASSWORD_FILE"
     fi
-    add_file /etc/board.d/01_leds "$SOURCE_DIR/openwrt/files/etc/board.d/01_leds" 755
-    add_file /etc/board.d/02_network "$SOURCE_DIR/openwrt/files/etc/board.d/02_network" 755
-    add_file /lib/upgrade/platform.sh "$SOURCE_DIR/openwrt/files/lib/upgrade/platform.sh" 644
-    # avm-firmware-install takes the firmware of the packet processors out of
-    # AVM's firmware image on the box.
-    add_file /usr/sbin/avm-firmware-install "$SOURCE_DIR/openwrt/files/usr/sbin/avm-firmware-install" 755
-    add_file /lib/upgrade/keep.d/avm-firmware "$SOURCE_DIR/openwrt/files/lib/upgrade/keep.d/avm-firmware" 644
-    add_file /usr/libexec/avm-firmware/fix-avm-squashfs "$AVM_FIRMWARE_TOOLS_BOX/fix-avm-squashfs" 755
-    add_file /usr/libexec/avm-firmware/extract-ap-firmware "$AVM_FIRMWARE_TOOLS_BOX/extract-ap-firmware" 755
-    add_file /usr/libexec/avm-firmware/unsquashfs3-multi "$UNSQUASHFS_AVM_BOX" 755
-    # OpenWrt loads the FPGA itself, after its overlay is mounted, so that a
-    # bitstream from avm-firmware-install --usb counts as well. The ImageBuilder
-    # enabled its services already, so the link is made here.
-    zig cc -target mips-linux-musleabi -mcpu=mips32r2 -static -Os -s -Wall \
-        -o "$BUILD_DIR/load-fpga" "$SOURCE_DIR/initramfs/load-fpga.c" "$SOURCE_DIR/initramfs/board.c"
-    add_file /usr/sbin/load-fpga "$BUILD_DIR/load-fpga" 755
-    add_file /etc/init.d/fpga "$SOURCE_DIR/openwrt/files/etc/init.d/fpga" 755
-    ln -s ../init.d/fpga "$OPENWRT_ROOT/etc/rc.d/S15fpga"
-    # The initramfs has it as well, but cfg80211 reads it again after the switch
-    # to the squashfs.
-    add_file /lib/firmware/regulatory.db "$REGDB/regulatory.db" 644
+    if [ ! -f "$ROOT_PASSWORD_FILE" ]; then
+        head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$ROOT_PASSWORD_FILE"
+        chmod 600 "$ROOT_PASSWORD_FILE"
+    fi
+    sed -e "s|@WIFI_PASSWORD@|$(cat "$WIFI_PASSWORD_FILE")|g" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|g" \
+        "$SOURCE_DIR/openwrt/uci-defaults-test" > "$BUILD_DIR/uci-defaults-test"
+    chmod 600 "$BUILD_DIR/uci-defaults-test"
+    add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
+    add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
+    if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
+        add_file /etc/dropbear/authorized_keys "$SSH_PUBLIC_KEY" 600
+    fi
 fi
+add_file /etc/board.d/01_leds "$SOURCE_DIR/openwrt/files/etc/board.d/01_leds" 755
+add_file /etc/board.d/02_network "$SOURCE_DIR/openwrt/files/etc/board.d/02_network" 755
+add_file /lib/functions/fritzbox7390-setup.sh "$SOURCE_DIR/openwrt/files/lib/functions/fritzbox7390-setup.sh" 644
+add_file /lib/upgrade/platform.sh "$SOURCE_DIR/openwrt/files/lib/upgrade/platform.sh" 644
+# avm-firmware-install takes the firmware of the packet processors out of AVM's
+# firmware image on the box.
+add_file /usr/sbin/avm-firmware-install "$SOURCE_DIR/openwrt/files/usr/sbin/avm-firmware-install" 755
+add_file /lib/upgrade/keep.d/avm-firmware "$SOURCE_DIR/openwrt/files/lib/upgrade/keep.d/avm-firmware" 644
+add_file /usr/libexec/avm-firmware/extract "$SOURCE_DIR/openwrt/files/usr/libexec/avm-firmware/extract" 755
+add_file /usr/libexec/avm-firmware/fix-avm-squashfs "$AVM_FIRMWARE_TOOLS_BOX/fix-avm-squashfs" 755
+add_file /usr/libexec/avm-firmware/extract-ap-firmware "$AVM_FIRMWARE_TOOLS_BOX/extract-ap-firmware" 755
+add_file /usr/libexec/avm-firmware/unsquashfs3-multi "$UNSQUASHFS_AVM_BOX" 755
+# OpenWrt loads the FPGA itself, after its overlay is mounted, so that a bitstream
+# from avm-firmware-install --usb counts as well. The ImageBuilder enabled its
+# services already, so the link is made here.
+build_for_box "$BUILD_DIR/load-fpga" "$SOURCE_DIR/initramfs/load-fpga.c" "$SOURCE_DIR/initramfs/board.c"
+add_file /usr/sbin/load-fpga "$BUILD_DIR/load-fpga" 755
+add_file /etc/init.d/fpga "$SOURCE_DIR/openwrt/files/etc/init.d/fpga" 755
+ln -s ../init.d/fpga "$OPENWRT_ROOT/etc/rc.d/S15fpga"
+# The initramfs has it as well, but cfg80211 reads it again after the switch to
+# the squashfs.
+add_file /lib/firmware/regulatory.db "$REGDB/regulatory.db" 644
 
 # The FPGA bitstream belongs to AVM and stays out of the repository. Pass its path
-# in BITFILE to include it, for example a copy taken from your own box.
+# in BITFILE to include it, for example from tools/fetch-avm-firmware.sh.
 if [ -n "${BITFILE:-}" ]; then
     add_file /lib/firmware/fpga.bit "$BITFILE" 600
 fi
 
 # The firmware of the packet processors belongs to Ikanos and stays out of the
-# repository too. tools/extract-ap-firmware.c writes it from AVM's modules.
+# repository too. Without it lan0 can't start, and the image comes up with a
+# setup network on 2.4 GHz, through which avm-firmware-install takes it from
+# AVM's image on the box.
 if [ -n "${AP_FIRMWARE_DIR:-}" ]; then
     add_file /lib/firmware/fusiv-bmu.bin "$AP_FIRMWARE_DIR/fusiv-bmu.bin" 600
     add_file /lib/firmware/fusiv-eth.bin "$AP_FIRMWARE_DIR/fusiv-eth.bin" 600
@@ -190,7 +160,7 @@ else
 fi
 
 make -C "$TREE" "${MAKE_ARGS[@]}" fusiv_defconfig
-if [ -n "${OPENWRT_ROOTFS:-}" ] && [ -z "${FLASH_IMAGE:-}" ]; then
+if [ -z "${FLASH_IMAGE:-}" ]; then
     # The OpenWrt files belong to the building user, root owns them on the box.
     # The list comes last, so that /init and the device nodes are those of the list.
     "$TREE/scripts/config" --file "$TREE/.config" \
@@ -199,9 +169,7 @@ if [ -n "${OPENWRT_ROOTFS:-}" ] && [ -z "${FLASH_IMAGE:-}" ]; then
         --enable RD_XZ --disable INITRAMFS_COMPRESSION_NONE --enable INITRAMFS_COMPRESSION_XZ
     make -C "$TREE" "${MAKE_ARGS[@]}" olddefconfig
 fi
-if [ -n "${OPENWRT_ROOTFS:-}" ]; then
-    "$SOURCE_DIR/tools/check-kernel-modules.sh" "$TREE" "$OPENWRT_ROOT"
-fi
+"$SOURCE_DIR/tools/check-kernel-modules.sh" "$TREE" "$OPENWRT_ROOT"
 make -C "$TREE" "${MAKE_ARGS[@]}" vmlinux.bin
 
 # The kernel must end below the RAM log (FUSIV_RAMLOG_PHYS).

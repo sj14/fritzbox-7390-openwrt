@@ -53,7 +53,7 @@ The starting point was AVM's GPL package 06.86, which has open sources for 2.6.2
 
 ## A restart keeps what a power-on resets
 
-Most of the work ran on restarts: from Freetz into an image in RAM, from one image into the next, through `sysupgrade`. A restart keeps registers that the AVM firmware once set, and that hid two faults until the first power-on with OpenWrt installed:
+Most of the work ran on restarts: from the AVM firmware (with Freetz) into an image in RAM, from one image into the next, through `sysupgrade`. A restart keeps registers that the AVM firmware once set, and that hid two faults until the first power-on with OpenWrt installed:
 
 - `CLK_GATE_CONTROL` (`0x190000cc`) reads `0xb5ff` after a power-on instead of `0xffff`. The clock of the buffer manager's processor (bit 9) is then off, and neither EVA nor Linux switched it on, so `lan0` sent nothing. `eth.c` now switches on the clocks it needs (bits 3, 4, 9 and 10).
 - The NAND isn't found at the first probe after a power-on, see NAND.
@@ -68,7 +68,7 @@ So test a change after a power-on as well, not only after a restart.
 - **EVA's window** is a few seconds after power-on. A machine on a cable straight to the box must keep its address while the link drops with the box's power, or it misses EVA (NetworkManager drops a profile without autoconnect).
 - **Image size:** a 5.9 MB image made EVA stop responding twice early on, while 7.2 MB RAM images loaded fine later. The cause is unknown; it may be the load address near the top of RAM.
 
-Before the first flash, back up the area under the AVM firmware: `kernel/test/flash-backup.sh` reads `/dev/mtd1ro` and `/dev/mtd0ro` under Freetz in 32 KiB pieces (the Freetz shell cuts its output after 64,000 bytes) and compares MD5 sums. `/dev/mtdblock1` is not suitable, because its size is not a multiple of 512 bytes and the block device drops the last 256 bytes. The backup boots from RAM through EVA like a test image (`kernel_ram`, `rootfs_ram`).
+This box's AVM firmware was backed up before the first flash, from `/dev/mtd1ro` and `/dev/mtd0ro` under Freetz; `/dev/mtdblock1` is not suitable, because its size is not a multiple of 512 bytes and the block device drops the last 256 bytes. The backup boots from RAM through EVA like a test image (`kernel_ram`, `rootfs_ram`), and it went back to flash the same way.
 
 Rescue paths:
 
@@ -128,7 +128,7 @@ With that, erasing all good blocks, `ubiformat` and UBIFS ran without a failure 
 
 The goal was the speed of the AVM firmware: 78.6 to 79.6 Mbit/s for a download over 2.4 GHz, close to the connection's 80 Mbit/s, with AVM's CPU about 90% busy. Linux reaches 80 Mbit/s too (2.4 GHz, 40 MHz) with the CPU about 60% busy. The CPU is the limit, not the radio.
 
-The CPU time per megabyte varies less than a single download: data from the LAN port divided by the softirq time in `/proc/stat` (`kernel/test/cpu-cost.sh`). It is 16.2 MB per second of softirq time, enough for about 130 Mbit/s.
+The CPU time per megabyte varies less than a single download: data from the LAN port divided by the softirq time in `/proc/stat`. It is 16.2 MB per second of softirq time, enough for about 130 Mbit/s.
 
 What helped, in order:
 
@@ -164,7 +164,7 @@ The PCI bridge has two traps, both handled in patch 0003, see `kernel/README.md`
 ## LEDs and the FPGA
 
 - **LEDs:** GPIOs 22 to 28, active low, as in AVM's hw156 configuration: info green 22, info red 23, power green 24, power red 25, Festnetz 26, WLAN 27, Internet 28. Power shows OpenWrt's boot state (`led-boot`, `led-running`, `led-failsafe`, `led-upgrade`), WLAN is on while the 2.4 GHz network is up (`board.d/01_leds`).
-- **GPIOs 0 to 15** have no driver: the FPGA, the switch reset and the NAND rebind live there in userspace. GPIO 6 (DECT reset in AVM's configuration) must not be driven: setting it low reset the box.
+- **GPIOs 0 to 15** have no driver: `/init` and `load-fpga` drive the switch reset and the FPGA there through `/dev/mem`. GPIO 6 (DECT reset in AVM's configuration) must not be driven: setting it low reset the box.
 - **ath9k's own LEDs:** ath9k selects `MAC80211_LEDS` with `LEDS_CLASS`, adds `ath9k-phy0` and `ath9k-phy1` and drives GPIO 1 of each radio. Their wiring is unknown; nothing visible changed.
 - **Red LED inside the box:** it lights while the FPGA runs AVM's bitstream without AVM's closed Piglet driver (`Piglet_noemif.ko`), which boots the DECT chip (Dialog SC14488) through the FPGA. Turning it off would most likely mean booting the DECT chip like AVM, days of reverse engineering, so an image without USB leaves the bitstream out. The FPGA's state doesn't survive a restart: the LED was off again after one.
 - **USB power** needs the FPGA, see `kernel/README.md`. USB also comes up when the FPGA is loaded long after EHCI and OHCI started.
@@ -177,7 +177,7 @@ The same tools run on the box for `avm-firmware-install`. It streams the image, 
 
 ## Testing
 
-- `kernel/test/` has scripts for runs from another machine, through Freetz or an installed OpenWrt, see `kernel/README.md`. They take the box's radios down before restarting it into EVA, so that a machine on the box's Wi-Fi moves to another access point.
+- `kernel/test/` has scripts for runs from another machine while the box runs its installed OpenWrt, see `kernel/README.md`. They take the box's radios down before restarting it into EVA, so that a machine on the box's Wi-Fi moves to another access point.
 - An SSH session doesn't notice when the box's network goes away; the scripts set keepalives.
 - Where the box's LAN doesn't work, a separate Wi-Fi network in a network and bridge of its own reaches it (`br-debug` with its own address). After moving a Wi-Fi interface to another network, run `wifi down` and `wifi up`: a reload left it in `br-lan`, where `arp_ignore=1` dropped ARP for the new address.
 - The test machine's `brcmfmac` lists only the access point it is connected to and couldn't join the box's WPA2/WPA3 network; WPA2 networks of the box joined as hidden networks work.
@@ -222,7 +222,6 @@ Without a console, the kernel's RAM log, the reboot status and the LEDs show how
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] Measure the UART pins and connect the console
-- [ ] Find out what overwrites the RAM log: after two test runs of 10 minutes, Freetz found no log, after one of 4 minutes it did
 - [ ] Why the NAND's first probe fails after a power-on
 - [ ] Hand the buffer manager its buffers faster than one per tick
 

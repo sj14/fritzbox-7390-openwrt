@@ -1,24 +1,6 @@
-# Linux 6.18 for the FRITZ!Box 7390
+# Linux 6.18 and OpenWrt for the FRITZ!Box 7390
 
-The kernel, the first userspace programs and the build of the images: a test image that runs from RAM, and OpenWrt images to test from RAM or to install. What was found out about the hardware is in `../DEVELOPMENT.md`.
-
-## Firmware
-
-The image needs files from AVM's firmware, which must not be published:
-
-- `BITFILE`, optional: the FPGA bitstream, which powers the USB port. Once loaded, the FPGA also lights a red LED inside the box, because nothing sets up the telephony behind it as AVM's driver does. Leave it out if you don't need USB.
-- `AP_FIRMWARE_DIR`: `fusiv-bmu.bin` and `fusiv-eth.bin`, written by `tools/extract-ap-firmware.c` from `fusivlib_lkm.ko` (prefix `BMUAP`) and `ethdriver_lkm.ko` (prefix `ETHAP`).
-
-Without the second one, `lan0` can't start. A test image without OpenWrt then has no network at all, so `build.sh` stops without it. An OpenWrt image can do without it: at its first start, `openwrt/files/etc/board.d/02_network` then sets OpenWrt's default network (`ucidef_set_wireless`) to `OpenWrt-7390-Setup-` and the last four hex digits of the LAN address, on 2.4 GHz, WPA2 with the fixed key `fritzbox7390-setup`, the only way onto the box until `avm-firmware-install` (below) has installed the firmware and removed that network again. The key is public, so anyone in range who knows it could take over the box while it waits for the firmware. A factory reset empties the overlay and with it the installed firmware, so the box comes up with the setup network again.
-
-They don't have to come from a box. `tools/fetch-avm-firmware.sh <directory>`, run inside `nix-shell`, downloads AVM's public firmware 06.88 for the 7390, checks its SHA256 and writes `bitfile.bit` and `ap-firmware/` there, identical to the files copied from a box. It reads AVM's squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `tools/fix-avm-squashfs.c` has corrected AVM's metadata pointers.
-
-```bash
-nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"
-AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfile.bit nix-shell --run ./build.sh
-```
-
-An OpenWrt image can also take the packet processor firmware out of AVM's image on the box: `avm-firmware-install` (`openwrt/files/usr/sbin/`) reads `FRITZ.Box_Fon_WLAN_7390-06.88.image` from stdin, for example `ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image`, with the same tools built for the box (in `/usr/libexec/avm-firmware/`). It never stores the image: `sha256sum` checks it while `tar` passes `kernel.image` on to `fix-avm-squashfs`, so only the squashfs (14 MB) lies in `/tmp`, which fits into the RAM of a test image too (about 26 MB free under OpenWrt). It installs nothing unless the checksum matches, writes `fusiv-bmu.bin` and `fusiv-eth.bin` to `/lib/firmware` when they differ, where `/lib/upgrade/keep.d/avm-firmware` keeps them through a sysupgrade, then removes the setup network and restarts the network. With `--usb` it also installs the FPGA bitstream as `fpga.bit` and loads it with `load-fpga`; without, it leaves it out because of the red LED.
+The kernel, the first userspace program and the build of the OpenWrt images: test images that run from RAM, and flash images to install. What was found out about the hardware is in `../DEVELOPMENT.md`.
 
 ## Layout
 
@@ -30,61 +12,51 @@ An OpenWrt image can also take the packet processor firmware out of AVM's image 
 | `linux/arch/mips/fusiv/bringup.c` | RAM log, LEDs, watchdog |
 | `linux/arch/mips/fusiv/eth.c` | LAN port through the packet processors |
 | `linux/arch/mips/fusiv/gpio.c` | GPIOs 16 to 31, for the LEDs |
-| `linux/arch/mips/fusiv/ramboot.c` | the image that EVA started from RAM as an MTD device, for testing the flash image |
+| `linux/arch/mips/fusiv/usb.c` | USB PHY and clock |
+| `linux/arch/mips/fusiv/ramboot.c` | the image that EVA started from RAM as an MTD device, for testing a flash image |
 | `linux/net/bridge/br_fast_forward.c` | short path for IP packets between the LAN port and the radios, past the rest of the bridge |
 | `linux/arch/mips/boot/dts/ikanos/` | device tree |
 | `linux/arch/mips/configs/fusiv_defconfig` | kernel configuration |
 | `patches/` | the few changes to existing kernel files |
-| `initramfs/init.c` | first userspace program of a test image: creates the bridge, starts the access points and TCP test services, restarts after 180 s |
-| `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: mounts the squashfs of a flash image, sets up the NAND for OpenWrt's overlay at the first start from flash, prepares the hardware and starts OpenWrt's init |
-| `initramfs/board.c` | shared by both: loads the FPGA, sets up the switch over MDIO, logs to the kernel log |
+| `initramfs/openwrt-init.c` | `/init`: mounts the squashfs of a flash image, finds the NAND and sets it up for OpenWrt's overlay at the first start from flash, sets up the switch and starts OpenWrt's init |
+| `initramfs/board.c` | shared by `/init` and `load-fpga`: FPGA, switch over MDIO, logging to the kernel log |
 | `initramfs/load-fpga.c` | loads the FPGA under OpenWrt, from `/etc/init.d/fpga` and `avm-firmware-install --usb` |
-| `openwrt/` | settings and files for the OpenWrt image, among them `avm-firmware-install` |
-| `test/` | scripts for test runs from another machine, through Freetz and EVA |
+| `openwrt/` | settings and files for the OpenWrt image, among them `avm-firmware-install` and `/usr/libexec/avm-firmware/extract` |
+| `test/` | scripts for test runs from another machine, through EVA |
 | `tools/make-eva-image.py` | creates and checks images for the EVA bootloader |
-| `tools/eva-ramboot.py` | loads an image through EVA, restarts the box on failure |
-| `tools/fetch-avm-firmware.sh` | takes the proprietary files from AVM's public firmware download |
+| `tools/eva-ramboot.py` | loads an image through EVA into RAM or writes it to flash |
 | `tools/fetch-openwrt-rootfs.sh` | builds the OpenWrt root file system with the ImageBuilder of a fixed release |
 | `tools/check-kernel-modules.sh` | stops the build if the kernel lacks a kernel module that the OpenWrt image brings |
-| `nixpkgs.nix` | the pinned nixpkgs that `shell.nix` and the other Nix files build with |
+| `tools/fetch-avm-firmware.sh` | takes AVM's files from AVM's public firmware download, for an image that carries them |
 | `tools/fix-avm-squashfs.c`, `unsquashfs-avm.nix` | make AVM's root file system readable |
 | `tools/extract-ap-firmware.c` | writes the firmware of the packet processors from AVM's kernel modules |
 | `avm-firmware-tools.nix` | builds the two C tools above, for the build machine or the box |
-| `../tools/fusiv-links.c` | shows link changes of the five switch PHYs, to find which socket is which |
+| `nixpkgs.nix` | the pinned nixpkgs that `shell.nix` and the other Nix files build with |
 
-## Build
+## Building
 
-```bash
-cd kernel
-AP_FIRMWARE_DIR=/path/to/ap-firmware BITFILE=/path/to/bitfile.bit nix-shell --run ./build.sh
-```
-
-The result is `build/fritzbox-7390.eva`. The first run compiles the MIPS cross compiler, which can take a long time. The password of the test networks is in `build/wifi-password`. The build generates it, because these networks are connected to the home network. Keep it out of the repository.
-
-Nothing marks the cross compiler as in use, so a garbage collection of the Nix store removes it, and the next build compiles it again. Keeping the build inputs as a garbage collection root avoids that:
+Everything builds inside `nix-shell` in `kernel/`; `shell.nix` brings all tools. The first run compiles the MIPS cross compiler, which can take an hour or more. Nothing marks it as in use, so a garbage collection of the Nix store removes it; keeping the build inputs as a garbage collection root avoids that:
 
 ```bash
 nix-build shell.nix -A inputDerivation -o build/shell-inputs
 ```
 
-## OpenWrt image
+1. Build the OpenWrt files: `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`. It downloads the ImageBuilder of OpenWrt 25.12.6 for `ath79/generic`, whose packages are built for the same CPU (`mips_24kc`, big endian), checks its SHA256, builds an image with LuCI and without kernel modules, and prints its root directory as `OPENWRT_ROOTFS`. The kernel stays this one, with everything built in. The release and the package list are set at the top of the script. The packages come from the release's package feeds, so a later run can pick up newer versions outside OpenWrt's base feed, such as LuCI; the script writes them and their versions to `build/openwrt/packages.manifest`.
+2. Build a test image: `OPENWRT_ROOTFS=<printed directory> SSH_PUBLIC_KEY=<public key> nix-shell --run ./build.sh`. The result is `build/fritzbox-7390.eva`, with OpenWrt in its initramfs, to load into RAM.
 
-With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of the test programs, and `/init` only sets up the switch before it starts OpenWrt's init. The FPGA is loaded later, by `/etc/init.d/fpga` (`openwrt/files/etc/init.d/`, start 15, before the network) with `load-fpga` (`initramfs/load-fpga.c`, the same code from `board.c`), because only then is OpenWrt's overlay mounted, where `avm-firmware-install --usb` puts the bitstream. The root file system comes from the OpenWrt ImageBuilder for `ath79/generic`, whose packages are built for the same CPU (`mips_24kc`, big endian). The kernel stays this one, with everything built in, so OpenWrt's kernel modules are not used.
+`openwrt/uci-defaults-test` sets up a test image as an access point in the home network on its first start: the LAN at `192.168.0.250` without a DHCP server of its own, both radios with WPA2/WPA3 (`sae-mixed`). The passwords of its Wi-Fi networks and of root are random, in `build/wifi-password` and `build/root-password`, and `SSH_PUBLIC_KEY` names a key for SSH. It leaves a box alone that it set up before, because OpenWrt runs it again after each sysupgrade.
 
-1. Run `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`. It downloads the ImageBuilder of OpenWrt 25.12.6, checks its SHA256, builds an image with LuCI and without kernel modules, and prints the root directory of that image as `OPENWRT_ROOTFS`. The release and the package list are set at the top of the script. The packages come from the release's package feeds, so a later run can pick up newer versions of packages outside OpenWrt's base feed, such as LuCI. The script writes the packages in the image and their versions to `build/openwrt/packages.manifest`; keep a copy with an image to compare it with a later one.
-2. Run `OPENWRT_ROOTFS=<printed directory> SSH_PUBLIC_KEY=<public key> ./build.sh` with the other variables as for a test image. A key of its own for the test box, without a passphrase, works for unattended tests: `ssh-keygen -t ed25519 -N "" -f build/test-ssh-key`.
-
-`openwrt/uci-defaults-test` sets up the image as an access point in the home network on its first start: the LAN at `192.168.0.250` without a DHCP server of its own, both radios on with WPA2/WPA3 (`sae-mixed`) and the test networks' password. The root password is random as well, in `build/root-password`, and `SSH_PUBLIC_KEY` names a key for SSH. `openwrt/files/etc/board.d/02_network` puts `lan0` into the LAN bridge and takes its address from `maca` in the bootloader environment.
+`/init` restarts a test image after `TEST_DURATION_S` seconds (600 by default), so that the box returns to its installed OpenWrt even when the image can't be reached; 0 keeps it running.
 
 ### Flash image
 
-With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, the OpenWrt files as squashfs padded to 6 MB, and the mark `0xdeadc0de` that starts `rootfs_data`. It fills at most the firmware area of 14.875 MB, see "Flash layout of the installed image" in `../DEVELOPMENT.md`. The same file can be tested from RAM first (`test/openwrt-test.sh`), where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
+With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, the OpenWrt files as squashfs padded to 6 MB, and the mark `0xdeadc0de` that starts `rootfs_data`. It fills at most the firmware area of 14.875 MB, see "Flash layout of the installed image" in `../DEVELOPMENT.md`. The same file can be tested from RAM first, where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
 
-## Building the release image
+### Building the release image
 
-The image of the releases, the one of the README's "Installing". For each tag, the workflow `../.github/workflows/release.yml` runs these steps on GitHub and attaches the image to the release. To build it yourself, you need Linux with [Nix](https://nixos.org/download/); the first build compiles the MIPS cross compiler, which can take an hour or more. In `kernel/`:
+The image of the releases, the one of the README's "Installing". For each tag, the workflow `../.github/workflows/release.yml` runs these steps on GitHub, with `nix-shell --pure`, and attaches the image to the release.
 
-1. Build the OpenWrt files with OpenWrt's ImageBuilder: `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`. It prints the `OPENWRT_ROOTFS` to use.
+1. Build the OpenWrt files as above.
 2. Build the image:
 
    ```bash
@@ -97,49 +69,45 @@ The image of the releases, the one of the README's "Installing". For each tag, t
 
 `RELEASE_IMAGE=1` makes a flash image with `TEST_DURATION_S=0`, OpenWrt's own defaults (`192.168.1.1` with DHCP, no root password) and the setup network, without `uci-defaults-test`, `test-diagnostics` and an SSH key, and without AVM's files. `build.sh` stops if `AP_FIRMWARE_DIR`, `BITFILE` or `SSH_PUBLIC_KEY` is set with it, so that none of them ends up in it by mistake. `TEST_DURATION_S` can still be set, for a test from RAM.
 
-## Testing without a console
+## AVM's files
 
-The kernel contains bring-up aids in `linux/arch/mips/fusiv/bringup.c`:
+The box needs files from AVM's firmware, which must not be published:
 
-- **RAM log:** All kernel messages also go to 256 KB of RAM at `0x01c00000`. `../tools/fusiv-ramlog.c` reads them in the AVM firmware. The location comes from `fusiv-ramlog scan`. Two earlier locations did not work, because the firmware overwrote the log there.
-- **Reboot status:** The kernel and `/init` write known texts to AVM's reboot status mailbox at `0x00fffe00`, which has survived resets on this box. Freetz then shows the progress in `/proc/sys/urlader/reboot_status`: `software` means `prom_init` was never reached, `poweron` means it was, and `watchdog` means `/init` ran. After unplugging the box, the value says nothing.
-- **Memory marks:** Right before a restart the kernel marks the RAM every 64 KB. `fusiv-ramlog scan` shows which marks survive under Freetz.
-- **LEDs:** Internet = `prom_init` reached, Festnetz = interrupt setup reached, WLAN = timer setup reached, Info = timer interrupts work. All four on was confirmed on the hardware.
-- **Watchdog:** It runs from the start, so a hang should restart the box. Whether it really resets the chip is unconfirmed. If the box hangs, unplug it, which also loses the log.
-- **Automatic end:** `/init` restarts the box after `TEST_DURATION_S` seconds, by default 180 for the test image and 600 for OpenWrt images, and 0 keeps it running. A panic restarts it after 10 s. `TICK_S` and `STATUS_INTERVAL_S` set how often `/init` logs. A long run should raise them, because the RAM log stops when it is full.
+- `fusiv-bmu.bin` and `fusiv-eth.bin`, the firmware of the packet processors, written by `tools/extract-ap-firmware.c` from `fusivlib_lkm.ko` (prefix `BMUAP`) and `ethdriver_lkm.ko` (prefix `ETHAP`). Without them `lan0` can't start.
+- `fpga.bit`, the FPGA bitstream, which powers the USB port. Once loaded, the FPGA also lights a red LED inside the box, because nothing sets up the telephony behind it as AVM's driver does, so leave it out if you don't need USB.
 
-Procedure, from a machine with an address in `192.168.178.0/24` that reaches the box:
+`openwrt/files/usr/libexec/avm-firmware/extract` takes all three out of AVM's public firmware 06.88 for the 7390. It reads the image from stdin and never stores it: `sha256sum` checks it while `tar` passes `kernel.image` on to `fix-avm-squashfs`, so only AVM's squashfs (14 MB) lies on disk for a moment, which also fits into the RAM of the box (about 26 MB free under OpenWrt). It reads that squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `fix-avm-squashfs` corrected AVM's metadata pointers, and writes nothing unless the checksum matches. The files are identical to those copied from a box. The same script runs in two places:
 
-1. Run `tools/eva-ramboot.py 192.168.178.1 load build/fritzbox-7390.eva`. It waits for EVA.
-2. Restart the box from Freetz (`/sbin/reboot`). The connection holds the box in EVA until the image is loaded.
-3. Wait until Freetz is back, about 2 minutes.
-4. Copy `fusiv-ramlog` to `/var/tmp` on the box and run `fusiv-ramlog dump`.
-5. Compare `memsize` in `/proc/sys/urlader/environment` with `0x08000000`.
+- **On the box**, as in the README's "Installing": `avm-firmware-install` reads the image from stdin (`ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image`), installs `fusiv-bmu.bin` and `fusiv-eth.bin` in `/lib/firmware` when they differ, where `/lib/upgrade/keep.d/avm-firmware` keeps them through a sysupgrade, removes the setup network and restarts the network. With `--usb` it also installs `fpga.bit` and loads it with `load-fpga`. The tools lie next to `extract` in `/usr/libexec/avm-firmware/`.
+- **On the build machine**, for an image that carries the files: `nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"` downloads AVM's image and writes the three files to `build/avm-firmware`. Then build with `AP_FIRMWARE_DIR=build/avm-firmware` and, for USB, `BITFILE=build/avm-firmware/fpga.bit`.
+
+Without the firmware of the packet processors, an image comes up with the setup network instead: at the first start, `openwrt/files/etc/board.d/02_network` sets OpenWrt's default network (`ucidef_set_wireless`) to `OpenWrt-7390-Setup-` and the last four hex digits of the LAN address, on 2.4 GHz, WPA2 with the fixed key `fritzbox7390-setup` (both in `openwrt/files/lib/functions/fritzbox7390-setup.sh`). It is the only way onto the box until `avm-firmware-install` has installed the firmware. The key is public, so anyone in range who knows it could take over the box while it waits. A factory reset empties the overlay and with it the installed firmware, so the box comes up with the setup network again.
+
+OpenWrt loads the FPGA with `/etc/init.d/fpga` (start 15, before the network), because only then is the overlay mounted, where `avm-firmware-install --usb` puts the bitstream.
+
+## Testing
+
+The scripts in `test/` run on another machine, inside `nix-shell`, while the box runs its installed OpenWrt. They restart it into EVA over SSH, load an image into RAM and let it restart into the installed OpenWrt at the end. They need:
+
+- `BOX_ADDRESS`, the address of the installed OpenWrt, and `OPENWRT_KEY`, the key that it and the test images accept (`SSH_PUBLIC_KEY` in `build.sh`); the public half of a key in the SSH agent works. A test image comes up at `TEST_ADDRESS`, `192.168.0.250` by default.
+- `BOX_BSSID_PREFIX`, the start of the box's own BSSIDs: the scripts take the box's radios down first and wait until this machine is on another access point, because it can't see EVA through the box.
+- `WIFI_DEVICE`, this machine's Wi-Fi interface (default `wlp5s0`), which gets an address next to EVA's (`192.168.178.2/24`, with `nmcli dev modify`, no root needed).
+
+The scripts:
+
+- `test/openwrt-test.sh <image> <prefix>` loads a test image, waits for SSH, saves the output of `test-diagnostics` and the logs, and restarts the box.
+- `test/openwrt-setup-test.sh <image> <AVM firmware image> <prefix>` tests an image built without `AP_FIRMWARE_DIR` the way a new box is set up: it joins this machine to the setup network (`SETUP_SSID`, given rather than scanned for, because the test machine's brcmfmac lists only the access point it is connected to), runs `avm-firmware-install` there (with `INSTALL_ARGS`, for example `--usb`), returns to the previous network and checks that the image now answers over the LAN. `openwrt/uci-defaults-test` leaves the setup network on its radio, so such a test image has it on 2.4 GHz and the test network on 5 GHz.
+- `test/read-ramlog.sh <log>` saves the RAM log of the last kernel that EVA started from RAM, with `RAMLOG_TOOL`, `../tools/fusiv-ramlog.c` built for the box. When a test image never answers, it restarts by itself after `TEST_DURATION_S`, and the RAM log holds its kernel log, OpenWrt's log and the state report.
 
 `tools/eva-ramboot.py 192.168.178.1 reboot` leaves EVA if the box stays there.
 
-`test/box-test.sh <image> <log>` does all of this. Under Freetz, keep the cable to the home network out of LAN 1. With it in LAN 1 (AVM setting `ethmode = ethmode_bridge` on this box), Freetz was not reachable over the cable, so after the script switched off the radios the box looked hung. LAN 4 works. Run it, like the other test scripts, inside `nix-shell`, which provides `python3`. The scripts reach the box through its installed firmware, see `test/box.sh`: with `INSTALLED_FIRMWARE=freetz` (the default) through the Freetz web interface, which needs `FREETZ_AUTH` (user:password), and with `INSTALLED_FIRMWARE=openwrt` over SSH, which needs `OPENWRT_KEY`. They also need `BOX_BSSID_PREFIX` (the start of the box's own BSSIDs, because the machine must not reach the network through them) and `RAMLOG_TOOL` (`../tools/fusiv-ramlog.c` built for the box). `test/cpu-cost.sh <log>` then prints how much data the LAN port received per second of softirq time, which varies less between runs than a single download. `test/flash-backup.sh` copies a flash partition, read only.
+The kernel has bring-up aids in `linux/arch/mips/fusiv/bringup.c`:
 
-`test/openwrt-test.sh <image> <SSH key> <prefix>` does the same for an OpenWrt test image: it waits for SSH at `192.168.0.250`, saves the output of `test-diagnostics` and the logs, and restarts the box into its installed firmware. If SSH never answers, the image restarts by itself after `TEST_DURATION_S`, and the RAM log then holds OpenWrt's log and the state report, readable with `test/read-ramlog.sh`. Only a kernel started from RAM writes the RAM log (`mtdram1=` on its command line), so an installed OpenWrt keeps the log of the test before it.
+- **RAM log:** all kernel messages also go to 256 KB of RAM at `0x01c00000`, but only from a kernel that EVA started from RAM (`mtdram1=` on its command line), so an installed OpenWrt keeps the log of the test before it. `fusiv-ramlog dump` reads it, `fusiv-ramlog scan` finds marks that the kernel writes every 64 KB right before a restart.
+- **LEDs:** Internet = `prom_init` reached, Festnetz = interrupt setup reached, WLAN = timer setup reached, Info = timer interrupts work.
+- **Watchdog:** it runs from the start, so a hang should restart the box. Whether it really resets the chip is unconfirmed. A panic restarts the box after 10 s.
 
-`test/openwrt-setup-test.sh <image> <SSH key> <AVM firmware image> <prefix>` tests an OpenWrt image built without `AP_FIRMWARE_DIR` the way a new box is set up: it joins this machine to the setup network (`SETUP_SSID`, given rather than scanned for, because the brcmfmac of the test machine lists only the access point it is connected to), runs `avm-firmware-install` there, returns to the previous network and checks that the image now answers over the LAN. `openwrt/uci-defaults-test` leaves the setup network on its radio, so such a test image has it on 2.4 GHz and the test network on 5 GHz.
-
-## Testing with a console (not done yet)
-
-Requires the serial console. The kernel itself is only loaded into RAM, but `tools/eva-ramboot.py` also runs `SETENV memsize` and `SETENV kernel_args_tmp`. Whether those values persist in the flash environment is unconfirmed, so compare `memsize` with the backup afterwards (normally `0x08000000`).
-
-1. Connect the console and read along at 115200 baud (see DEVELOPMENT.md).
-2. Connect a PC directly to a LAN port and give it an address such as `192.168.178.2/24`. EVA listens on `192.168.178.1` according to the environment.
-3. Power-cycle the box and run this within the first seconds:
-
-   ```bash
-   python3 tools/eva-ramboot.py 192.168.178.1 load build/fritzbox-7390.eva
-   ```
-
-4. Expected output: the kernel log, then `Hello from userspace`, the system info, and a `tick` line every 5 seconds. Typed characters are echoed.
-5. A power cycle returns the box to Freetz.
-
-`eva_ramboot.py` comes from [OpenWrt](https://github.com/openwrt/openwrt/blob/main/scripts/flashing/eva_ramboot.py).
+**With a serial console** (not connected yet, see `../DEVELOPMENT.md`): connect a PC directly to a LAN socket with `192.168.178.2/24`, power-cycle the box and run `python3 tools/eva-ramboot.py 192.168.178.1 load build/fritzbox-7390.eva` within the first seconds; the console then shows the kernel log and OpenWrt's start. `eva-ramboot.py` also runs `SETENV memsize` and `SETENV kernel_args_tmp`; whether those persist in the flash environment is unconfirmed, so compare `memsize` with its normal value `0x08000000` afterwards. `eva_ramboot.py` comes from [OpenWrt](https://github.com/openwrt/openwrt/blob/main/scripts/flashing/eva_ramboot.py).
 
 ## PCI bridge problems
 
@@ -152,15 +120,9 @@ The chips get their real PCI ID in the first bus scan (`arch/mips/pci/pci-fusiv.
 
 ## USB power needs the FPGA
 
-The USB port only gets power after the board's Xilinx FPGA (Spartan XC3S250E) is programmed. Without that, EHCI and OHCI start and report port power, but no device is seen and interrupt 35 stays at zero. A keyboard with backlight showed it: it stays dark under Linux without the FPGA, and it lights up about 13 s after the start of the AVM kernel, when the firmware loads the FPGA. With the FPGA loaded, Linux finds the keyboard and USB devices (see the USB Ethernet log in `../hardware/`).
+The USB port only gets power after the board's Xilinx FPGA (Spartan XC3S250E) is programmed. Without that, EHCI and OHCI start and report port power, but no device is seen and interrupt 35 stays at zero. A keyboard with backlight showed it: it stays dark under Linux without the FPGA, and it lights up about 13 s after the start of the AVM kernel, when the firmware loads the FPGA. With the FPGA loaded, Linux finds USB devices (see the USB Ethernet log in `../hardware/`).
 
-The test image's `/init`, and `load-fpga` under OpenWrt, program the FPGA in slave serial mode through GPIOs (`PROG` 14, `CLK` 11, `DATA` 12, `DONE` 8). The bitstream belongs to AVM and is not in this repository. Copy `/lib/modules/bitfile.bit` from your own box and pass its path when building:
-
-```bash
-AP_FIRMWARE_DIR=/path/to/ap-firmware BITFILE=/path/to/bitfile.bit nix-shell --run ./build.sh
-```
-
-Without `BITFILE` the image builds and runs as before, but USB has no power, and the red LED inside the box stays off.
+`load-fpga` programs the FPGA in slave serial mode through GPIOs (`PROG` 14, `CLK` 11, `DATA` 12, `DONE` 8) from `/lib/firmware/fpga.bit`, which comes from `avm-firmware-install --usb` or from `BITFILE` at the build. Without it, USB has no power, and the red LED inside the box stays off.
 
 `usbcore.autosuspend=-1` is also needed, because the controller otherwise stops with the root hub suspended.
 

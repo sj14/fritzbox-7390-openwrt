@@ -1,5 +1,5 @@
 # Loads an image into RAM through EVA, or writes it to flash, while the box runs
-# its installed firmware. Source this file after box.sh. Needs BOX_BSSID_PREFIX,
+# its installed OpenWrt. Source this file after openwrt.sh. Needs BOX_BSSID_PREFIX,
 # the start of the box's own BSSIDs, because this machine must not reach the
 # network through the box's radios, and WIFI_DEVICE, this machine's Wi-Fi
 # interface (default wlp5s0).
@@ -8,6 +8,8 @@ WIFI_DEVICE=${WIFI_DEVICE:-wlp5s0}
 EVA_ADDRESS=192.168.178.1
 LOCAL_EVA_ADDRESS=192.168.178.2/24
 EVA_TOOLS=$(cd "$(dirname "${BASH_SOURCE[0]}")/../tools" && pwd)
+# A restart during the first seconds after a start can get lost.
+MINIMUM_UPTIME_S=90
 
 current_access_point() {
     nmcli -f IN-USE,BSSID dev wifi list --rescan no | awk '$1 == "*" { print $2 }'
@@ -27,15 +29,12 @@ eva_start() {
         return 2
     fi
 
-    # Freetz ignores a restart during its first seconds, so wait for both firmwares.
-    echo 'cut -d. -f1 /proc/uptime' > "$work/uptime.sh"
-    until [ "$(box_run "$work/uptime.sh" | head -1)" -ge 90 ] 2> /dev/null; do
+    until [ "$(box_ssh 'cut -d. -f1 /proc/uptime' 2> /dev/null)" -ge "$MINIMUM_UPTIME_S" ] 2> /dev/null; do
         sleep 5
     done
 
     # Take this machine off the box's radios, so that it still sees EVA.
-    echo "$BOX_RADIOS_OFF" > "$work/radio-off.sh"
-    box_run "$work/radio-off.sh" > /dev/null
+    box_ssh 'wifi down' > /dev/null 2>&1
     for attempt in $(seq 1 40); do
         case "$(current_access_point)" in
             ""|"$BOX_BSSID_PREFIX"*) sleep 2 ;;
@@ -53,10 +52,9 @@ eva_start() {
     python3 -I "$EVA_TOOLS/eva-ramboot.py" --wait 200 "$EVA_ADDRESS" "$command" "$image" > "$work/load.log" 2>&1 &
     loader=$!
     sleep 1
-    # Freetz sometimes ignores /sbin/reboot, so repeat it while the box is up.
-    printf '(sleep 1; /sbin/reboot) > /dev/null 2>&1 &\n' > "$work/reboot.sh"
+    # Repeat the restart while the box is still up, in case one gets lost.
     while kill -0 "$loader" 2> /dev/null; do
-        box_is_up && box_run "$work/reboot.sh" > /dev/null
+        box_ssh '(sleep 1; reboot) > /dev/null 2>&1 &' > /dev/null 2>&1
         for second in $(seq 1 40); do
             kill -0 "$loader" 2> /dev/null || break
             sleep 1

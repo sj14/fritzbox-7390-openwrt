@@ -36,7 +36,7 @@ You need a Linux machine with Python 3 and Wi-Fi, connected by cable to one of t
 
 Before you start:
 
-- **Back up the AVM firmware** if you might want it back exactly as it is. With Freetz on the box, `kernel/test/flash-backup.sh` copies it, see "EVA: loading and flashing" in `DEVELOPMENT.md`.
+- **Back up the AVM firmware** if you might want it back exactly as it is; that needs a shell on the AVM firmware, such as Freetz, see "EVA: loading and flashing" in `DEVELOPMENT.md`. AVM's public firmware download should work too, but that is not tested, see "Going back to the AVM firmware".
 - **Copy what you need from the AVM internal storage.** The first start of OpenWrt erases the NAND that holds it, see "Settings and packages on the NAND".
 - **Download the image** from the [latest release](https://github.com/sj14/fritzbox-7390-openwrt/releases/latest): `fritzbox-7390-openwrt-<version>.bin`, its `.sha256` and `eva-ramboot.py`, the tool that flashes it. Check the image with `sha256sum -c fritzbox-7390-openwrt-<version>.bin.sha256`. To build it yourself instead, see "Building the release image" in `kernel/README.md`.
 - **Download AVM's firmware 06.88** for the 7390, [`FRITZ.Box_Fon_WLAN_7390-06.88.image`](https://download.avm.de/fritzbox/fritzbox-7390/deutschland/fritz.os/FRITZ.Box_Fon_WLAN_7390-06.88.image). The box takes the firmware of its LAN port and, if you want USB, the FPGA bitstream from it. Get it now: the network through which you hand it to the box has no internet.
