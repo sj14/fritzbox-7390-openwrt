@@ -18,7 +18,7 @@ defaults:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # The first build compiles the MIPS cross compiler.
     timeout-minutes: 360
     permissions:
@@ -33,10 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The Nix store, the kernel build and the ImageBuilder need more than the
-      # runner's free space; these preinstalled tools aren't used.
+      # The build needs about 9 to 12 GB at its peak: 3.3 GB in kernel/build,
+      # 2.8 GB of Nix store for kernel/shell.nix, and while Nix compiles the
+      # cross GCC its build directory and sources. A runner has 14 GB, of which
+      # the preinstalled tools take part, so these unused ones go. The df lines
+      # show how much was needed.
       - name: Make room on the disk
-        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
 
       # The tools that OpenWrt's ImageBuilder expects on the host, besides those
       # of kernel/shell.nix.
@@ -58,7 +64,9 @@ jobs:
         working-directory: kernel
         env:
           RELEASE_IMAGE: "1"
-        run: nix-shell --run ./build.sh
+        run: |
+          nix-shell --run ./build.sh
+          df -h /
 
       - name: Attach the image to the release
         env:
