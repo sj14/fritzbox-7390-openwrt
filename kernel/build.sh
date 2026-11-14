@@ -12,9 +12,14 @@ BUILD_DIR=${BUILD_DIR:-$SOURCE_DIR/build}
 TARBALL=$BUILD_DIR/linux-$KERNEL_VERSION.tar.xz
 TREE=$BUILD_DIR/linux-$KERNEL_VERSION-fusiv
 MAKE_ARGS=(ARCH=mips "CROSS_COMPILE=${CROSS_COMPILE:-mips-unknown-linux-musl-}" -j"$(nproc)")
-# Without the firmware of the packet processors lan0 can not start, and the box
-# has no network at all. See "Firmware" in the README.
-: "${AP_FIRMWARE_DIR:?set AP_FIRMWARE_DIR to the directory with fusiv-bmu.bin and fusiv-eth.bin}"
+# Without the firmware of the packet processors lan0 can not start. An OpenWrt
+# image can do without it: it then comes up with a setup network on 2.4 GHz,
+# through which avm-firmware-install takes it from AVM's image on the box. A test
+# image without OpenWrt would have no network at all. See "Firmware" in the README.
+if [ -z "${AP_FIRMWARE_DIR:-}" ] && [ -z "${OPENWRT_ROOTFS:-}" ]; then
+    echo "set AP_FIRMWARE_DIR to the directory with fusiv-bmu.bin and fusiv-eth.bin" >&2
+    exit 1
+fi
 
 mkdir -p "$BUILD_DIR"
 
@@ -152,8 +157,12 @@ fi
 
 # The firmware of the packet processors belongs to Ikanos and stays out of the
 # repository too. tools/extract-ap-firmware.c writes it from AVM's modules.
-add_file /lib/firmware/fusiv-bmu.bin "$AP_FIRMWARE_DIR/fusiv-bmu.bin" 600
-add_file /lib/firmware/fusiv-eth.bin "$AP_FIRMWARE_DIR/fusiv-eth.bin" 600
+if [ -n "${AP_FIRMWARE_DIR:-}" ]; then
+    add_file /lib/firmware/fusiv-bmu.bin "$AP_FIRMWARE_DIR/fusiv-bmu.bin" 600
+    add_file /lib/firmware/fusiv-eth.bin "$AP_FIRMWARE_DIR/fusiv-eth.bin" 600
+else
+    echo "No AP_FIRMWARE_DIR: the image comes up without LAN, with a setup network on 2.4 GHz"
+fi
 
 make -C "$TREE" "${MAKE_ARGS[@]}" fusiv_defconfig
 if [ -n "${OPENWRT_ROOTFS:-}" ] && [ -z "${FLASH_IMAGE:-}" ]; then

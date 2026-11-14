@@ -20,9 +20,14 @@ set system.@system[0].log_file='/tmp/openwrt.log'
 set system.@system[0].test_defaults='1'
 SETTINGS
 
+# A radio that carries the setup network of /etc/board.d/02_network, which an
+# image without the LAN firmware brings up, keeps it.
 for radio in $(uci show wireless | sed -n "s/^wireless\.\([^.]*\)=wifi-device$/\1/p"); do
     band=$(uci -q get wireless.$radio.band)
     interface=$(uci show wireless | sed -n "s/^wireless\.\([^.]*\)\.device='$radio'$/\1/p" | head -1)
+    case "$(uci -q get wireless.$interface.ssid)" in
+        OpenWrt-7390-Setup-*) continue ;;
+    esac
     case "$band" in
         2g) ssid=fritzbox7390-test-2ghz; htmode=HT40 ;;
         *) ssid=fritzbox7390-test-5ghz; htmode=HT20 ;;

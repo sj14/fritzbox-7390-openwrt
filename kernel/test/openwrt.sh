@@ -6,10 +6,12 @@
 OPENWRT_ADDRESS=${OPENWRT_ADDRESS:-192.168.0.250}
 : "${OPENWRT_KEY:?set OPENWRT_KEY to the SSH key that the OpenWrt image accepts}"
 
-# Runs a command on the box, like ssh.
+# Runs a command on the box, like ssh. The keepalives end a session within about
+# 15 s when the box restarts or its network goes away, instead of never.
 openwrt_ssh() {
     ssh -i "$OPENWRT_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-        -o ConnectTimeout=5 -o BatchMode=yes "root@$OPENWRT_ADDRESS" "$@"
+        -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3 \
+        "root@$OPENWRT_ADDRESS" "$@"
 }
 
 # Runs a local script file on the box and prints its output.

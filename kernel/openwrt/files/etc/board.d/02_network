@@ -3,12 +3,25 @@
 . /lib/functions/uci-defaults.sh
 . /lib/functions/system.sh
 
+# Without the firmware of the packet processors lan0 can't start. Then the first
+# start brings up a network on 2.4 GHz with a fixed, published password, as the
+# only way onto the box, to install the firmware with avm-firmware-install,
+# which removes this network again. The end of the SSID comes from the LAN
+# address, to tell boxes apart.
+SETUP_SSID_PREFIX=OpenWrt-7390-Setup-
+SETUP_KEY=fritzbox7390-setup
+
 board_config_update
 ucidef_set_interface_lan "lan0"
 
 urlader="/dev/mtd$(find_mtd_index urlader)"
 lan_mac=$(tr '\000' '\n' < "$urlader" | sed -n '/^maca$/{n;p;q}')
 [ -n "$lan_mac" ] && ucidef_set_interface_macaddr "lan" "$(macaddr_canonicalize "$lan_mac")"
+
+if [ ! -f /lib/firmware/fusiv-bmu.bin ] || [ ! -f /lib/firmware/fusiv-eth.bin ]; then
+    setup_suffix=$(echo "$lan_mac" | tr -d ':' | tail -c 5 | tr 'a-f' 'A-F')
+    ucidef_set_wireless 2g "$SETUP_SSID_PREFIX$setup_suffix" psk2 "$SETUP_KEY"
+fi
 
 board_config_flush
 

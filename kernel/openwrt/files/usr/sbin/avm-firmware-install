@@ -2,7 +2,9 @@
 # Takes the firmware of the packet processors, without which lan0 can't start,
 # out of AVM's public firmware 06.88 for the FRITZ!Box 7390 and installs it in
 # /lib/firmware, where it survives a sysupgrade (/lib/upgrade/keep.d). The same
-# steps as tools/fetch-avm-firmware.sh in the repository, on the box.
+# steps as tools/fetch-avm-firmware.sh in the repository, on the box. Then it
+# removes the setup network that /etc/board.d/02_network brought up because the
+# firmware was missing, and restarts the network.
 #
 # Usage: avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
 # From another machine: ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
@@ -17,6 +19,8 @@ FIRMWARE_SHA256=35cf96b6d9417c46bdf227a7b2beb0d9c39df0c9dc6eff6c39c30c9c27819ae5
 TOOLS=/usr/libexec/avm-firmware
 FIRMWARE_DIR=/lib/firmware
 WORK=/tmp/avm-firmware
+# The same as SETUP_SSID_PREFIX in /etc/board.d/02_network.
+SETUP_SSID_PREFIX=OpenWrt-7390-Setup-
 MODULES=lib/modules/2.6.28.10/kernel/fusiv_src/kernel
 BMU_MODULE=$MODULES/ap_code/lib/fusivlib_lkm.ko
 ETH_MODULE=$MODULES/drivers/ethdriver/ethdriver_lkm.ko
@@ -65,5 +69,14 @@ if [ -z "$changed" ]; then
     echo "The firmware was installed already"
     exit 0
 fi
-echo "Installed the firmware in $FIRMWARE_DIR, restarting the network"
+echo "Installed the firmware in $FIRMWARE_DIR"
+
+setup_networks=$(uci show wireless | sed -n "s/^wireless\.\([^.]*\)\.ssid='$SETUP_SSID_PREFIX.*'\$/\1/p")
+for network in $setup_networks; do
+    echo "Removing the setup network $(uci get "wireless.$network.ssid")"
+    uci delete "wireless.$network"
+done
+uci commit wireless
+
+echo "Restarting the network"
 /etc/init.d/network restart
