@@ -36,7 +36,7 @@ AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfil
 | `linux/arch/mips/configs/fusiv_defconfig` | kernel configuration |
 | `patches/` | the few changes to existing kernel files |
 | `initramfs/init.c` | first userspace program of a test image: creates the bridge, starts the access points and TCP test services, restarts after 180 s |
-| `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: mounts the squashfs of a flash image, prepares the hardware and starts OpenWrt's init |
+| `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: mounts the squashfs of a flash image, sets up the NAND for OpenWrt's overlay at the first start from flash, prepares the hardware and starts OpenWrt's init |
 | `initramfs/board.c` | shared by both: loads the FPGA, sets up the switch over MDIO, logs to the kernel log |
 | `openwrt/` | settings and files for the OpenWrt image |
 | `test/` | scripts for test runs from another machine, through Freetz and EVA |

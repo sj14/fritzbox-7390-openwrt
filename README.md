@@ -16,7 +16,7 @@ This is an unofficial hobby project, tested on one box only. It is not affiliate
 | Web interface (LuCI) and SSH | work |
 | LEDs | can be switched off or set in LuCI under System, LED Configuration |
 | USB | works, tested with a USB Ethernet adapter; needs the FPGA bitstream, which also lights a red LED inside the box, so leave it out if you don't use USB |
-| Saved settings | work, in 4.9 MB of NOR flash (jffs2), or in about 460 MB of the internal NAND once moved there (see "Settings and packages on the NAND"); both also hold installed packages |
+| Saved settings | work, in about 460 MB of the internal NAND (UBIFS), which also holds installed packages; see "Settings and packages on the NAND" |
 | Updates (`sysupgrade`, also in LuCI) | work, and keep the settings |
 
 The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it can move about 130 Mbit/s between LAN and Wi-Fi.
@@ -37,6 +37,7 @@ You need a Linux machine with [Nix](https://nixos.org/download/), connected by c
 Before you start:
 
 - **Back up the AVM firmware** if you might want it back exactly as it is. With Freetz on the box, `kernel/test/flash-backup.sh` copies it, see "Installing" in `DEVELOPMENT.md`.
+- **Copy what you need from the AVM internal storage.** The first start of OpenWrt erases the NAND that holds it, see "Settings and packages on the NAND".
 - **Pick the box's address** in your network. The image comes up as an access point with a fixed address and no DHCP server of its own: `192.168.0.250`, with gateway and DNS at `192.168.0.1`. If your network is different, change these lines in `kernel/openwrt/uci-defaults-test` first.
 
 Building, in `kernel/`:
@@ -81,22 +82,19 @@ As on any OpenWrt device, an update keeps the settings but not the packages you 
 
 ## Settings and packages on the NAND
 
-The box has a 512 MB NAND that the AVM firmware uses as internal storage. OpenWrt can keep its settings and installed packages there, as on OpenWrt's own NAND devices, instead of the 4.9 MB in the NOR flash: once a UBI volume called `rootfs_data` exists on the NAND, OpenWrt uses it, and updates put the saved settings there. This **erases the AVM internal storage**, so copy anything you still need from it first.
+The box has a 512 MB NAND that the AVM firmware uses as internal storage. OpenWrt keeps its settings and installed packages there, as on OpenWrt's own NAND devices, instead of in the 4.9 MB of the NOR flash. The image sets it up by itself at its first start from flash, after installing or after an update from an image without it: it **erases the NAND**, AVM's internal storage included, and makes the UBI volume `rootfs_data` there. Settings that the update kept move along. Afterwards `df -h /overlay` shows `/dev/ubi0_0` with about 460 MB.
 
-Over SSH on the box:
+So copy anything you still need from the AVM internal storage before you install. A test from RAM never touches the NAND.
 
-1. Find the NAND partition: `grep '"ubi"' /proc/mtd` shows it, `mtd5` on a box with this image. The steps below use `/dev/mtd5`.
-2. Get `ubi-utils`. OpenWrt only builds it for targets with NAND, so it comes from `ath79/nand`, which has the same processor, but whose signing key the box doesn't know. Download `https://downloads.openwrt.org/releases/25.12.6/targets/ath79/nand/packages/ubi-utils-2.3.0-r1.apk` on your machine, compare its SHA256 with the line for it in `https://downloads.openwrt.org/releases/25.12.6/targets/ath79/nand/sha256sums`, copy it to `/tmp` on the box and install it with `apk add --allow-untrusted --force-non-repository /tmp/ubi-utils-2.3.0-r1.apk`.
-3. Prepare the NAND and make the volume: `ubiformat /dev/mtd5 -y`, then `ubiattach -p /dev/mtd5` and `ubimkvol /dev/ubi0 -N rootfs_data -m`.
-4. Remove `ubi-utils` again: `apk del ubi-utils`.
-5. Update the box with the image it already runs, with "Keep settings", as under "Updating". The update moves the settings to the NAND. Afterwards `df -h /overlay` shows `/dev/ubi0_0` with about 460 MB.
-6. Install your own packages again.
+It leaves the NAND alone, and OpenWrt stays in the NOR flash, in three cases. The kernel log says which (`dmesg | grep NAND:`):
 
-Don't copy `/overlay` to the new volume by hand: without OpenWrt's state mark, it takes the volume as new and starts it empty, with the settings of the first start.
+- The NAND has UBI already, as after the first start.
+- OpenWrt's overlay in the NOR flash is in use: its settings move along only with an update that keeps them.
+- The NAND has UBI headers that UBI couldn't attach, for example after damage. To start over on the NAND, erase it by hand (`flash_erase` from the package `nand-utils` of `ath79/nand`, see `DEVELOPMENT.md`), and the next start sets it up again, with the settings of the first start.
 
 ## Going back to the AVM firmware
 
-Write your backup of the AVM firmware the same way as the OpenWrt image, in steps 5 to 7, with the backup file instead of `build/fritzbox-7390-flash.bin`. This was done with the box's own backup. AVM's public firmware download should work as well, using `var/tmp/kernel.image` from inside it, but that is not tested.
+Write your backup of the AVM firmware the same way as the OpenWrt image, in steps 5 to 7, with the backup file instead of `build/fritzbox-7390-flash.bin`. This was done with the box's own backup. AVM's public firmware download should work as well, using `var/tmp/kernel.image` from inside it, but that is not tested. The NAND then still holds OpenWrt's UBI; whether the AVM firmware formats it again for its internal storage is not tested either.
 
 ## Development
 
