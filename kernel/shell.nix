@@ -29,6 +29,10 @@ pkgs.mkShell {
   UNSQUASHFS_AVM = "${import ./unsquashfs-avm.nix { inherit pkgs; }}/bin/unsquashfs3-multi";
   AVM_FIRMWARE_TOOLS = "${import ./avm-firmware-tools.nix { inherit pkgs; }}/bin";
 
+  # The same tools built for the box, for avm-firmware-install in the OpenWrt image.
+  UNSQUASHFS_AVM_BOX = "${import ./unsquashfs-avm.nix { pkgs = mips.pkgsStatic; }}/bin/unsquashfs3-multi";
+  AVM_FIRMWARE_TOOLS_BOX = "${import ./avm-firmware-tools.nix { pkgs = mips.pkgsStatic; }}/bin";
+
   # cfg80211 needs this database for 5 GHz.
   REGDB = "${pkgs.wireless-regdb}/lib/firmware";
 }

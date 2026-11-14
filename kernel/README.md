@@ -20,6 +20,8 @@ nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"
 AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfile.bit nix-shell --run ./build.sh
 ```
 
+An OpenWrt image can also take the packet processor firmware out of AVM's image on the box: `avm-firmware-install` (`openwrt/files/usr/sbin/`) reads `FRITZ.Box_Fon_WLAN_7390-06.88.image` from stdin, for example `ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image`, with the same tools built for the box (in `/usr/libexec/avm-firmware/`). It never stores the image: `sha256sum` checks it while `tar` passes `kernel.image` on to `fix-avm-squashfs`, so only the squashfs (14 MB) lies in `/tmp`, which fits into the RAM of a test image too (about 26 MB free under OpenWrt). It installs nothing unless the checksum matches, writes `fusiv-bmu.bin` and `fusiv-eth.bin` to `/lib/firmware` when they differ, where `/lib/upgrade/keep.d/avm-firmware` keeps them through a sysupgrade, and then restarts the network. It doesn't install the FPGA bitstream yet, because `/init` loads that before OpenWrt mounts its overlay.
+
 ## Layout
 
 | Path | Content |
@@ -38,7 +40,7 @@ AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfil
 | `initramfs/init.c` | first userspace program of a test image: creates the bridge, starts the access points and TCP test services, restarts after 180 s |
 | `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: mounts the squashfs of a flash image, sets up the NAND for OpenWrt's overlay at the first start from flash, prepares the hardware and starts OpenWrt's init |
 | `initramfs/board.c` | shared by both: loads the FPGA, sets up the switch over MDIO, logs to the kernel log |
-| `openwrt/` | settings and files for the OpenWrt image |
+| `openwrt/` | settings and files for the OpenWrt image, among them `avm-firmware-install` |
 | `test/` | scripts for test runs from another machine, through Freetz and EVA |
 | `tools/make-eva-image.py` | creates and checks images for the EVA bootloader |
 | `tools/eva-ramboot.py` | loads an image through EVA, restarts the box on failure |

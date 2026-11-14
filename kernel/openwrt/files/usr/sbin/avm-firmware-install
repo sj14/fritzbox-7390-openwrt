@@ -1,0 +1,69 @@
+#!/bin/sh
+# Takes the firmware of the packet processors, without which lan0 can't start,
+# out of AVM's public firmware 06.88 for the FRITZ!Box 7390 and installs it in
+# /lib/firmware, where it survives a sysupgrade (/lib/upgrade/keep.d). The same
+# steps as tools/fetch-avm-firmware.sh in the repository, on the box.
+#
+# Usage: avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
+# From another machine: ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
+#
+# The image is read from stdin and never stored: sha256sum checks it while tar
+# passes kernel.image on, so that only AVM's squashfs (14 MB) lies in /tmp. That
+# also fits into the RAM of a test image. Nothing is installed unless the
+# checksum matches.
+set -eu -o pipefail
+
+FIRMWARE_SHA256=35cf96b6d9417c46bdf227a7b2beb0d9c39df0c9dc6eff6c39c30c9c27819ae5
+TOOLS=/usr/libexec/avm-firmware
+FIRMWARE_DIR=/lib/firmware
+WORK=/tmp/avm-firmware
+MODULES=lib/modules/2.6.28.10/kernel/fusiv_src/kernel
+BMU_MODULE=$MODULES/ap_code/lib/fusivlib_lkm.ko
+ETH_MODULE=$MODULES/drivers/ethdriver/ethdriver_lkm.ko
+
+if [ -t 0 ]; then
+    echo "Usage: avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image" >&2
+    exit 2
+fi
+
+rm -rf -- /tmp/avm-firmware
+mkdir -m 700 "$WORK"
+trap 'rm -rf -- /tmp/avm-firmware' EXIT
+
+echo "Reading AVM's firmware image"
+mkfifo "$WORK/image"
+sha256sum < "$WORK/image" > "$WORK/image.sha256" &
+checksum_pid=$!
+# tar stops at the end of the archive. cat reads what may follow, so that
+# sha256sum sees the whole input.
+tee "$WORK/image" | { tar -xOf - ./var/tmp/kernel.image; cat > /dev/null; } |
+    "$TOOLS/fix-avm-squashfs" - "$WORK/rootfs.squashfs"
+wait "$checksum_pid"
+read -r checksum rest < "$WORK/image.sha256"
+if [ "$checksum" != "$FIRMWARE_SHA256" ]; then
+    echo "This is not AVM's firmware 06.88 for the FRITZ!Box Fon WLAN 7390: SHA256 $checksum" >&2
+    exit 1
+fi
+
+echo "Taking the firmware out of AVM's modules"
+"$TOOLS/unsquashfs3-multi" -f -d "$WORK/root" "$WORK/rootfs.squashfs" "$BMU_MODULE" "$ETH_MODULE" > /dev/null
+rm -f -- "$WORK/rootfs.squashfs"
+"$TOOLS/extract-ap-firmware" "$WORK/root/$BMU_MODULE" BMUAP "$WORK/fusiv-bmu.bin"
+"$TOOLS/extract-ap-firmware" "$WORK/root/$ETH_MODULE" ETHAP "$WORK/fusiv-eth.bin"
+
+changed=
+for name in fusiv-bmu.bin fusiv-eth.bin; do
+    if ! cmp -s "$WORK/$name" "$FIRMWARE_DIR/$name"; then
+        cp "$WORK/$name" "$FIRMWARE_DIR/$name"
+        chmod 600 "$FIRMWARE_DIR/$name"
+        changed=1
+    fi
+done
+sync
+
+if [ -z "$changed" ]; then
+    echo "The firmware was installed already"
+    exit 0
+fi
+echo "Installed the firmware in $FIRMWARE_DIR, restarting the network"
+/etc/init.d/network restart

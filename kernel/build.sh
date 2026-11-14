@@ -129,6 +129,13 @@ else
     add_file /etc/board.d/02_network "$SOURCE_DIR/openwrt/files/etc/board.d/02_network" 755
     add_file /lib/upgrade/platform.sh "$SOURCE_DIR/openwrt/files/lib/upgrade/platform.sh" 644
     add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
+    # avm-firmware-install takes the firmware of the packet processors out of
+    # AVM's firmware image on the box.
+    add_file /usr/sbin/avm-firmware-install "$SOURCE_DIR/openwrt/files/usr/sbin/avm-firmware-install" 755
+    add_file /lib/upgrade/keep.d/avm-firmware "$SOURCE_DIR/openwrt/files/lib/upgrade/keep.d/avm-firmware" 644
+    add_file /usr/libexec/avm-firmware/fix-avm-squashfs "$AVM_FIRMWARE_TOOLS_BOX/fix-avm-squashfs" 755
+    add_file /usr/libexec/avm-firmware/extract-ap-firmware "$AVM_FIRMWARE_TOOLS_BOX/extract-ap-firmware" 755
+    add_file /usr/libexec/avm-firmware/unsquashfs3-multi "$UNSQUASHFS_AVM_BOX" 755
     # The initramfs has it as well, but cfg80211 reads it again after the switch
     # to the squashfs.
     add_file /lib/firmware/regulatory.db "$REGDB/regulatory.db" 644
