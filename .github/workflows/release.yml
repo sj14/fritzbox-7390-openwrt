@@ -1,0 +1,77 @@
+# Builds the image to pass on (RELEASE_IMAGE=1 in kernel/build.sh, without
+# AVM's files) for a new tag or a published release, and attaches it to the
+# tag's release, together with its SHA256, the list of OpenWrt packages in it
+# and the EVA tool that flashes it. The README's "Installing" starts from these
+# files.
+name: Release image
+
+on:
+  push:
+    tags: ["*"]
+  release:
+    types: [published]
+
+# "shell: bash" makes GitHub run each step with -eo pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    # The first build compiles the MIPS cross compiler.
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    # A release made in the web interface may bring both events for one tag;
+    # the later run replaces the earlier one.
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: true
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Nix store, the kernel build and the ImageBuilder need more than the
+      # runner's free space; these preinstalled tools aren't used.
+      - name: Make room on the disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      # The tools that OpenWrt's ImageBuilder expects on the host, besides those
+      # of kernel/shell.nix.
+      - name: Install the ImageBuilder's host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gawk rsync unzip zstd xsltproc file
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Build the OpenWrt files
+        working-directory: kernel
+        run: |
+          mkdir -p build
+          nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt" | tee build/fetch-openwrt-rootfs.log
+          grep '^OPENWRT_ROOTFS=' build/fetch-openwrt-rootfs.log >> "$GITHUB_ENV"
+
+      - name: Build the image
+        working-directory: kernel
+        env:
+          RELEASE_IMAGE: "1"
+        run: nix-shell --run ./build.sh
+
+      - name: Attach the image to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name=fritzbox-7390-openwrt-$TAG
+          mkdir release
+          cp kernel/build/fritzbox-7390-flash.bin "release/$name.bin"
+          cp kernel/build/openwrt/packages.manifest "release/$name.manifest"
+          cp kernel/tools/eva-ramboot.py release/eva-ramboot.py
+          (cd release && sha256sum "$name.bin" > "$name.bin.sha256")
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+              gh release create "$TAG" --verify-tag --title "$TAG" \
+                  --notes "OpenWrt for the FRITZ!Box 7390, without AVM's files. How to install it: see \"Installing\" in the README."
+          fi
+          gh release upload "$TAG" release/* --clobber

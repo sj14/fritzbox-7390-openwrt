@@ -11,15 +11,12 @@ This is an unofficial hobby project, tested on one box only. It is not affiliate
 | Feature | State |
 |---|---|
 | Wi-Fi 2.4 GHz and 5 GHz | works, WPA2 and WPA3 |
-| Wi-Fi speed | about 80 Mbit/s on both bands, the same as with the AVM firmware on the same connection |
-| LAN sockets 1 to 4 | work at 1 Gbit/s; the speed between two sockets is not measured yet |
+| LAN sockets 1 to 4 | work at 1 Gbit/s |
 | Web interface (LuCI) and SSH | work |
 | LEDs | can be switched off or set in LuCI under System, LED Configuration |
 | USB | works, tested with a USB Ethernet adapter; needs the FPGA bitstream (`avm-firmware-install --usb`), which also lights a red LED inside the box, so leave it out if you don't use USB |
 | Saved settings | work, in about 460 MB of the internal NAND (UBIFS), which also holds installed packages; see "Settings and packages on the NAND" |
 | Updates (`sysupgrade`, also in LuCI) | work, and keep the settings |
-
-The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it can move about 130 Mbit/s between LAN and Wi-Fi.
 
 ## What doesn't work
 
@@ -28,51 +25,40 @@ The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it c
 | DSL | not supported, there is no open driver, so the box only works behind another router |
 | Telephony (FON, ISDN, DECT) | not supported, there are no open drivers |
 | WLAN and DECT buttons | not set up yet |
-| Ready-made images | none published yet. The image no longer contains AVM's firmware files, which may not be passed on: the box takes them from AVM's public firmware download itself, see "Installing" |
 
 ## Installing
 
-> **Not tested end to end yet.** These steps install the image without AVM's files, which the box then takes from AVM's download itself. The build, flashing, the first start after a power-on, the setup network and `avm-firmware-install` were tested on this box, but one by one, not in a row from a box with AVM's firmware. Not tried yet: getting an address from the box by DHCP in steps 7 and 9, and the settings in LuCI (steps 9 to 11), which work as on any OpenWrt device.
+> **Not tested end to end yet.** Flashing, the first start and installing AVM's files were tested on this box, but one by one, not in a row from a box with AVM's firmware, and with an image built locally rather than one from a release. Not tried yet: getting an address from the box by DHCP in steps 5 and 7, and the settings in LuCI (steps 7 to 9), which work as on any OpenWrt device.
 
-You need a Linux machine with [Nix](https://nixos.org/download/) for the build, and Python 3 and Wi-Fi for the rest, connected by cable to one of the box's LAN sockets or to the same switch. The box's bootloader EVA writes the image. It answers at `192.168.178.1` for a few seconds after each power-on, and it is never written itself, so it stays available for a rescue. Your AVM settings in flash (`tffs`) stay untouched as well.
+The image contains none of AVM's files, which may not be passed on: the box takes them from AVM's public firmware download itself, in step 6.
+
+You need a Linux machine with Python 3 and Wi-Fi, connected by cable to one of the box's LAN sockets or to the same switch. The box's bootloader EVA writes the image. It answers at `192.168.178.1` for a few seconds after each power-on, and it is never written itself, so it stays available for a rescue. Your AVM settings in flash (`tffs`) stay untouched as well.
 
 Before you start:
 
 - **Back up the AVM firmware** if you might want it back exactly as it is. With Freetz on the box, `kernel/test/flash-backup.sh` copies it, see "EVA: loading and flashing" in `DEVELOPMENT.md`.
 - **Copy what you need from the AVM internal storage.** The first start of OpenWrt erases the NAND that holds it, see "Settings and packages on the NAND".
+- **Download the image** from the [latest release](https://github.com/sj14/fritzbox-7390-openwrt/releases/latest): `fritzbox-7390-openwrt-<version>.bin`, its `.sha256` and `eva-ramboot.py`, the tool that flashes it. Check the image with `sha256sum -c fritzbox-7390-openwrt-<version>.bin.sha256`. To build it yourself instead, see "Building the release image" in `kernel/README.md`.
 - **Download AVM's firmware 06.88** for the 7390, [`FRITZ.Box_Fon_WLAN_7390-06.88.image`](https://download.avm.de/fritzbox/fritzbox-7390/deutschland/fritz.os/FRITZ.Box_Fon_WLAN_7390-06.88.image). The box takes the firmware of its LAN port and, if you want USB, the FPGA bitstream from it. Get it now: the network through which you hand it to the box has no internet.
-
-Building, in `kernel/`:
-
-1. Build the OpenWrt files with OpenWrt's ImageBuilder: `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`.
-2. Build the image. `RELEASE_IMAGE=1` builds it with OpenWrt's own defaults and without any of AVM's files:
-
-   ```bash
-   RELEASE_IMAGE=1 \
-     OPENWRT_ROOTFS=build/openwrt/openwrt-imagebuilder-25.12.6-ath79-generic.Linux-x86_64/build_dir/target-mips_24kc_musl/root-ath79 \
-     nix-shell --run ./build.sh
-   ```
-
-   The image is `build/fritzbox-7390-flash.bin`.
 
 Flashing:
 
-3. Give the machine an address next to EVA's, for example `sudo ip addr add 192.168.178.2/24 dev <interface>`.
-4. Start the tool. It waits up to four minutes for EVA:
+1. Give the machine an address next to EVA's, for example `sudo ip addr add 192.168.178.2/24 dev <interface>`.
+2. Start the tool. It waits up to four minutes for EVA:
 
    ```bash
-   python3 tools/eva-ramboot.py --wait 240 192.168.178.1 flash build/fritzbox-7390-flash.bin
+   python3 eva-ramboot.py --wait 240 192.168.178.1 flash fritzbox-7390-openwrt-<version>.bin
    ```
 
-5. Unplug the box's power, wait a few seconds and plug it in again. The tool writes the image (one to two minutes, don't cut the power) and restarts the box.
-6. Wait about three minutes. The power LED blinks while OpenWrt starts, then stays on. The first start takes a little longer, because it sets up the NAND for the settings.
+3. Unplug the box's power, wait a few seconds and plug it in again. The tool writes the image (one to two minutes, don't cut the power) and restarts the box.
+4. Wait about three minutes. The power LED blinks while OpenWrt starts, then stays on. The first start takes a little longer, because it sets up the NAND for the settings.
 
 Installing AVM's files:
 
-7. The LAN sockets don't work yet. Instead the box brings up the Wi-Fi network `OpenWrt-7390-Setup-` followed by four characters, on 2.4 GHz, with the password `fritzbox7390-setup`. Join it; the box gives your machine an address in `192.168.1.0/24`.
+5. The LAN sockets don't work yet. Instead the box brings up the Wi-Fi network `OpenWrt-7390-Setup-` followed by four characters, on 2.4 GHz, with the password `fritzbox7390-setup`. Join it; the box gives your machine an address in `192.168.1.0/24`.
 
-   That password is published here, and `root` has no password yet. Until step 9, anyone in range who knows this could log in to the box, so do steps 7 to 9 without a break.
-8. Hand AVM's file to the box. Add `--usb` after `avm-firmware-install` if you want USB:
+   That password is published here, and `root` has no password yet. Until step 7, anyone in range who knows this could log in to the box, so do steps 5 to 7 without a break.
+6. Hand AVM's file to the box. Add `--usb` after `avm-firmware-install` if you want USB:
 
    ```bash
    ssh root@192.168.1.1 avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
@@ -82,14 +68,14 @@ Installing AVM's files:
 
 Setting it up:
 
-9. Connect the machine by cable directly to a LAN socket of the box, not to your home network yet, and open `http://192.168.1.1`. Log in as `root` with an empty password and set one under System, Administration.
-10. Under Network, Wireless, add your own networks. On 2.4 GHz, pick a fixed channel (1, 6 or 11) that your router doesn't use. Click "Save & Apply" at the end; "Save" alone only collects the changes.
-11. Make the box an access point in your network: under Network, Interfaces, edit `lan`, give it a free address in your network with your router as gateway and DNS server, and under "DHCP Server" tick "Ignore interface", because your router hands out the addresses. "Save & Apply" then asks whether to keep the change, because the box leaves `192.168.1.1`; choose "Apply unchecked".
-12. Connect the box to your home network and open it at its new address. Make a backup under System, Backup / Flash Firmware, and keep it.
+7. Connect the machine by cable directly to a LAN socket of the box, not to your home network yet, and open `http://192.168.1.1`. Log in as `root` with an empty password and set one under System, Administration.
+8. Under Network, Wireless, add your own networks. On 2.4 GHz, pick a fixed channel (1, 6 or 11) that your router doesn't use. Click "Save & Apply" at the end; "Save" alone only collects the changes.
+9. Make the box an access point in your network: under Network, Interfaces, edit `lan`, give it a free address in your network with your router as gateway and DNS server, and under "DHCP Server" tick "Ignore interface", because your router hands out the addresses. "Save & Apply" then asks whether to keep the change, because the box leaves `192.168.1.1`; choose "Apply unchecked".
+10. Connect the box to your home network and open it at its new address. Make a backup under System, Backup / Flash Firmware, and keep it.
 
 ## Updating
 
-Build a new image the same way and install it under System, Backup / Flash Firmware, with "Keep settings" checked, or over SSH: copy it to `/tmp` on the box (`ssh root@<box> "cat > /tmp/fritzbox-7390-flash.bin" < build/fritzbox-7390-flash.bin`) and run `sysupgrade /tmp/fritzbox-7390-flash.bin` there. OpenWrt warns that the image has no metadata; the image check of this board still runs. Tested over SSH, not yet in LuCI.
+Download the image of a newer release and install it under System, Backup / Flash Firmware, with "Keep settings" checked, or over SSH: copy it to `/tmp` on the box (`ssh root@<box> "cat > /tmp/fritzbox-7390-openwrt.bin" < fritzbox-7390-openwrt-<version>.bin`) and run `sysupgrade /tmp/fritzbox-7390-openwrt.bin` there. OpenWrt warns that the image has no metadata; the image check of this board still runs. Tested over SSH, not yet in LuCI.
 
 As on any OpenWrt device, an update keeps the settings, and here also AVM's files, but not the packages you installed yourself, nor their package feeds. Install them again afterwards.
 
@@ -107,12 +93,12 @@ It leaves the NAND alone, and OpenWrt stays in the NOR flash, in three cases. Th
 
 ## Going back to the AVM firmware
 
-Write your backup of the AVM firmware the same way as the OpenWrt image, in steps 3 to 5, with the backup file instead of `build/fritzbox-7390-flash.bin`. This was done with the box's own backup. AVM's public firmware download should work as well, using `var/tmp/kernel.image` from inside it, but that is not tested. The NAND then still holds OpenWrt's UBI; whether the AVM firmware formats it again for its internal storage is not tested either.
+Write your backup of the AVM firmware the same way as the OpenWrt image, in steps 1 to 3, with the backup file instead of the image. This was done with the box's own backup. AVM's public firmware download should work as well, using `var/tmp/kernel.image` from inside it, but that is not tested. The NAND then still holds OpenWrt's UBI; whether the AVM firmware formats it again for its internal storage is not tested either.
 
 ## Development
 
-How the image is built and tested, and what was found out about the hardware: `DEVELOPMENT.md` and `kernel/README.md`.
+How the image is built and tested, and what was found out about the hardware: `kernel/README.md` and `DEVELOPMENT.md`. For each tag, a GitHub workflow (`.github/workflows/release.yml`) builds the image and attaches it to the release.
 
 ## License
 
-GPL-2.0-only, see `LICENSE`, the same as the Linux kernel. The firmware files from AVM that a build needs are not part of this repository and not covered by it.
+GPL-2.0-only, see `LICENSE`, the same as the Linux kernel. The released images contain Linux and OpenWrt under their own licenses; this repository and the OpenWrt release and kernel version it pins are their sources. AVM's firmware files are neither in this repository nor in the images.
