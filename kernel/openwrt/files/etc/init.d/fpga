@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+# Loads the FPGA, which powers the USB port, if there is a bitstream: from the
+# image (BITFILE in build.sh) or from avm-firmware-install --usb. It runs after
+# OpenWrt mounted its overlay and before the network, so that a USB network
+# adapter is there for it.
+
+START=15
+
+start() {
+    [ -f /lib/firmware/fpga.bit ] || return 0
+    /usr/sbin/load-fpga
+}

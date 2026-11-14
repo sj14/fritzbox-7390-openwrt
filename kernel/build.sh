@@ -141,6 +141,14 @@ else
     add_file /usr/libexec/avm-firmware/fix-avm-squashfs "$AVM_FIRMWARE_TOOLS_BOX/fix-avm-squashfs" 755
     add_file /usr/libexec/avm-firmware/extract-ap-firmware "$AVM_FIRMWARE_TOOLS_BOX/extract-ap-firmware" 755
     add_file /usr/libexec/avm-firmware/unsquashfs3-multi "$UNSQUASHFS_AVM_BOX" 755
+    # OpenWrt loads the FPGA itself, after its overlay is mounted, so that a
+    # bitstream from avm-firmware-install --usb counts as well. The ImageBuilder
+    # enabled its services already, so the link is made here.
+    zig cc -target mips-linux-musleabi -mcpu=mips32r2 -static -Os -s -Wall \
+        -o "$BUILD_DIR/load-fpga" "$SOURCE_DIR/initramfs/load-fpga.c" "$SOURCE_DIR/initramfs/board.c"
+    add_file /usr/sbin/load-fpga "$BUILD_DIR/load-fpga" 755
+    add_file /etc/init.d/fpga "$SOURCE_DIR/openwrt/files/etc/init.d/fpga" 755
+    ln -s ../init.d/fpga "$OPENWRT_ROOT/etc/rc.d/S15fpga"
     # The initramfs has it as well, but cfg80211 reads it again after the switch
     # to the squashfs.
     add_file /lib/firmware/regulatory.db "$REGDB/regulatory.db" 644

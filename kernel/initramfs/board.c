@@ -292,9 +292,10 @@ void log_switch_identity(void) {
     }
 }
 
-// Programs the board's Xilinx FPGA in slave serial mode, if the image contains
-// a bitstream. Under the AVM firmware the USB port gets power around this step.
-void load_fpga(void) {
+// Programs the board's Xilinx FPGA in slave serial mode from
+// /lib/firmware/fpga.bit. Under the AVM firmware the USB port gets power around
+// this step. Returns 0 if the FPGA raised its done pin.
+int load_fpga(void) {
     enum {
         GPIO_PAGE = 0x19040000, GPIO_DIR = 0x0, GPIO_FLAG = 0x4, GPIO_CLEAR = 0x4, GPIO_SET = 0x6,
         PIN_CLK = 1 << 11, PIN_DATA = 1 << 12, PIN_PROG = 1 << 14, PIN_DONE = 1 << 8,
@@ -307,7 +308,7 @@ void load_fpga(void) {
     FILE *file = fopen("/lib/firmware/fpga.bit", "rb");
     if (!file) {
         log_line("no FPGA bitstream in this image\n");
-        return;
+        return -1;
     }
     size_t size = fread(bitstream, 1, sizeof(bitstream), file);
     fclose(file);
@@ -318,17 +319,19 @@ void load_fpga(void) {
     }
     if (start + sizeof(sync_word) >= size) {
         log_line("FPGA bitstream has no sync word\n");
-        return;
+        return -1;
     }
 
     int fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (fd < 0) {
-        return;
+        log_line("FPGA: cannot open /dev/mem\n");
+        return -1;
     }
     volatile char *gpio = mmap(NULL, PAGE_SIZE_BYTES, PROT_READ | PROT_WRITE, MAP_SHARED, fd, GPIO_PAGE);
     if (gpio == MAP_FAILED) {
+        log_line("FPGA: cannot map the GPIO registers\n");
         close(fd);
-        return;
+        return -1;
     }
     volatile unsigned short *direction = (volatile unsigned short *)(gpio + GPIO_DIR);
     volatile unsigned short *clear_pins = (volatile unsigned short *)(gpio + GPIO_CLEAR);
@@ -366,4 +369,5 @@ void load_fpga(void) {
 
     munmap((void *)gpio, PAGE_SIZE_BYTES);
     close(fd);
+    return (after & PIN_DONE) ? 0 : -1;
 }

@@ -1,2 +1,3 @@
 /lib/firmware/fusiv-bmu.bin
 /lib/firmware/fusiv-eth.bin
+/lib/firmware/fpga.bit

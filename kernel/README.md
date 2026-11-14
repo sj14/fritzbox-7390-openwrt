@@ -20,7 +20,7 @@ nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"
 AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfile.bit nix-shell --run ./build.sh
 ```
 
-An OpenWrt image can also take the packet processor firmware out of AVM's image on the box: `avm-firmware-install` (`openwrt/files/usr/sbin/`) reads `FRITZ.Box_Fon_WLAN_7390-06.88.image` from stdin, for example `ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image`, with the same tools built for the box (in `/usr/libexec/avm-firmware/`). It never stores the image: `sha256sum` checks it while `tar` passes `kernel.image` on to `fix-avm-squashfs`, so only the squashfs (14 MB) lies in `/tmp`, which fits into the RAM of a test image too (about 26 MB free under OpenWrt). It installs nothing unless the checksum matches, writes `fusiv-bmu.bin` and `fusiv-eth.bin` to `/lib/firmware` when they differ, where `/lib/upgrade/keep.d/avm-firmware` keeps them through a sysupgrade, then removes the setup network and restarts the network. It doesn't install the FPGA bitstream yet, because `/init` loads that before OpenWrt mounts its overlay.
+An OpenWrt image can also take the packet processor firmware out of AVM's image on the box: `avm-firmware-install` (`openwrt/files/usr/sbin/`) reads `FRITZ.Box_Fon_WLAN_7390-06.88.image` from stdin, for example `ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image`, with the same tools built for the box (in `/usr/libexec/avm-firmware/`). It never stores the image: `sha256sum` checks it while `tar` passes `kernel.image` on to `fix-avm-squashfs`, so only the squashfs (14 MB) lies in `/tmp`, which fits into the RAM of a test image too (about 26 MB free under OpenWrt). It installs nothing unless the checksum matches, writes `fusiv-bmu.bin` and `fusiv-eth.bin` to `/lib/firmware` when they differ, where `/lib/upgrade/keep.d/avm-firmware` keeps them through a sysupgrade, then removes the setup network and restarts the network. With `--usb` it also installs the FPGA bitstream as `fpga.bit` and loads it with `load-fpga`; without, it leaves it out because of the red LED.
 
 ## Layout
 
@@ -40,6 +40,7 @@ An OpenWrt image can also take the packet processor firmware out of AVM's image 
 | `initramfs/init.c` | first userspace program of a test image: creates the bridge, starts the access points and TCP test services, restarts after 180 s |
 | `initramfs/openwrt-init.c` | first userspace program of an OpenWrt image: mounts the squashfs of a flash image, sets up the NAND for OpenWrt's overlay at the first start from flash, prepares the hardware and starts OpenWrt's init |
 | `initramfs/board.c` | shared by both: loads the FPGA, sets up the switch over MDIO, logs to the kernel log |
+| `initramfs/load-fpga.c` | loads the FPGA under OpenWrt, from `/etc/init.d/fpga` and `avm-firmware-install --usb` |
 | `openwrt/` | settings and files for the OpenWrt image, among them `avm-firmware-install` |
 | `test/` | scripts for test runs from another machine, through Freetz and EVA |
 | `tools/make-eva-image.py` | creates and checks images for the EVA bootloader |
@@ -70,7 +71,7 @@ nix-build shell.nix -A inputDerivation -o build/shell-inputs
 
 ## OpenWrt image
 
-With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of the test programs, and `/init` only loads the FPGA and sets up the switch before it starts OpenWrt's init. The root file system comes from the OpenWrt ImageBuilder for `ath79/generic`, whose packages are built for the same CPU (`mips_24kc`, big endian). The kernel stays this one, with everything built in, so OpenWrt's kernel modules are not used.
+With `OPENWRT_ROOTFS`, the image contains an OpenWrt root file system instead of the test programs, and `/init` only sets up the switch before it starts OpenWrt's init. The FPGA is loaded later, by `/etc/init.d/fpga` (`openwrt/files/etc/init.d/`, start 15, before the network) with `load-fpga` (`initramfs/load-fpga.c`, the same code from `board.c`), because only then is OpenWrt's overlay mounted, where `avm-firmware-install --usb` puts the bitstream. The root file system comes from the OpenWrt ImageBuilder for `ath79/generic`, whose packages are built for the same CPU (`mips_24kc`, big endian). The kernel stays this one, with everything built in, so OpenWrt's kernel modules are not used.
 
 1. Run `nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt"`. It downloads the ImageBuilder of OpenWrt 25.12.6, checks its SHA256, builds an image with LuCI and without kernel modules, and prints the root directory of that image as `OPENWRT_ROOTFS`. The release and the package list are set at the top of the script. The packages come from the release's package feeds, so a later run can pick up newer versions of packages outside OpenWrt's base feed, such as LuCI. The script writes the packages in the image and their versions to `build/openwrt/packages.manifest`; keep a copy with an image to compare it with a later one.
 2. Run `OPENWRT_ROOTFS=<printed directory> SSH_PUBLIC_KEY=<public key> ./build.sh` with the other variables as for a test image. A key of its own for the test box, without a passphrase, works for unattended tests: `ssh-keygen -t ed25519 -N "" -f build/test-ssh-key`.
@@ -163,7 +164,7 @@ Test runs are not scripted in this repository, because they need the box's passw
 
 The USB port only gets power after the board's Xilinx FPGA (Spartan XC3S250E) is programmed. Without that, EHCI and OHCI start and report port power, but no device is seen and interrupt 35 stays at zero. A keyboard with backlight showed it: it stays dark under Linux without the FPGA, and it lights up about 13 s after the start of the AVM kernel, when the firmware loads the FPGA. With the FPGA loaded by `/init`, Linux finds the keyboard (see the USB Ethernet log in `../hardware/`).
 
-`/init` programs the FPGA in slave serial mode through GPIOs (`PROG` 14, `CLK` 11, `DATA` 12, `DONE` 8). The bitstream belongs to AVM and is not in this repository. Copy `/lib/modules/bitfile.bit` from your own box and pass its path when building:
+The test image's `/init`, and `load-fpga` under OpenWrt, program the FPGA in slave serial mode through GPIOs (`PROG` 14, `CLK` 11, `DATA` 12, `DONE` 8). The bitstream belongs to AVM and is not in this repository. Copy `/lib/modules/bitfile.bit` from your own box and pass its path when building:
 
 ```bash
 AP_FIRMWARE_DIR=/path/to/ap-firmware BITFILE=/path/to/bitfile.bit nix-shell --run ./build.sh

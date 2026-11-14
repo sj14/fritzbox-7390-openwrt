@@ -462,7 +462,8 @@ int main(void) {
 
     mount("proc", "/proc", "proc", 0, NULL);
     mount("sysfs", "/sys", "sysfs", 0, NULL);
-    load_fpga();
+    // The FPGA is loaded later by /etc/init.d/fpga, once the overlay with a
+    // bitstream from avm-firmware-install is mounted.
     log_switch_identity();
     configure_switch();
     umount("/sys");

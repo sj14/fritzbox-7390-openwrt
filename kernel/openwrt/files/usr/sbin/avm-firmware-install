@@ -6,7 +6,11 @@
 # removes the setup network that /etc/board.d/02_network brought up because the
 # firmware was missing, and restarts the network.
 #
-# Usage: avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
+# With --usb it also installs the FPGA bitstream, which powers the USB port, and
+# loads it; /etc/init.d/fpga loads it at every start. Once loaded, the FPGA also
+# lights a red LED inside the box, so leave it out if you don't use USB.
+#
+# Usage: avm-firmware-install [--usb] < FRITZ.Box_Fon_WLAN_7390-06.88.image
 # From another machine: ssh root@<box> avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image
 #
 # The image is read from stdin and never stored: sha256sum checks it while tar
@@ -24,11 +28,33 @@ SETUP_SSID_PREFIX=OpenWrt-7390-Setup-
 MODULES=lib/modules/2.6.28.10/kernel/fusiv_src/kernel
 BMU_MODULE=$MODULES/ap_code/lib/fusivlib_lkm.ko
 ETH_MODULE=$MODULES/drivers/ethdriver/ethdriver_lkm.ko
+BITSTREAM=lib/modules/bitfile.bit
+USAGE="Usage: avm-firmware-install [--usb] < FRITZ.Box_Fon_WLAN_7390-06.88.image"
 
+with_usb=
+case "${1:-}" in
+    --usb) with_usb=1 ;;
+    "") ;;
+    *) echo "$USAGE" >&2; exit 2 ;;
+esac
 if [ -t 0 ]; then
-    echo "Usage: avm-firmware-install < FRITZ.Box_Fon_WLAN_7390-06.88.image" >&2
+    echo "$USAGE" >&2
     exit 2
 fi
+
+# Copies a file to /lib/firmware unless it is there already. Returns 1 if it was.
+# It is called in "&&", where set -e doesn't stop at a failure, so it exits itself.
+# Usage: install_firmware <name in WORK and in FIRMWARE_DIR>
+install_firmware() {
+    if cmp -s "$WORK/$1" "$FIRMWARE_DIR/$1"; then
+        return 1
+    fi
+    if ! cp "$WORK/$1" "$FIRMWARE_DIR/$1" || ! chmod 600 "$FIRMWARE_DIR/$1"; then
+        echo "Cannot install $1 in $FIRMWARE_DIR" >&2
+        exit 1
+    fi
+    echo "Installed $1 in $FIRMWARE_DIR"
+}
 
 rm -rf -- /tmp/avm-firmware
 mkdir -m 700 "$WORK"
@@ -50,26 +76,34 @@ if [ "$checksum" != "$FIRMWARE_SHA256" ]; then
 fi
 
 echo "Taking the firmware out of AVM's modules"
-"$TOOLS/unsquashfs3-multi" -f -d "$WORK/root" "$WORK/rootfs.squashfs" "$BMU_MODULE" "$ETH_MODULE" > /dev/null
+wanted="$BMU_MODULE $ETH_MODULE"
+[ -n "$with_usb" ] && wanted="$wanted $BITSTREAM"
+"$TOOLS/unsquashfs3-multi" -f -d "$WORK/root" "$WORK/rootfs.squashfs" $wanted > /dev/null
 rm -f -- "$WORK/rootfs.squashfs"
 "$TOOLS/extract-ap-firmware" "$WORK/root/$BMU_MODULE" BMUAP "$WORK/fusiv-bmu.bin"
 "$TOOLS/extract-ap-firmware" "$WORK/root/$ETH_MODULE" ETHAP "$WORK/fusiv-eth.bin"
 
-changed=
-for name in fusiv-bmu.bin fusiv-eth.bin; do
-    if ! cmp -s "$WORK/$name" "$FIRMWARE_DIR/$name"; then
-        cp "$WORK/$name" "$FIRMWARE_DIR/$name"
-        chmod 600 "$FIRMWARE_DIR/$name"
-        changed=1
-    fi
-done
+lan_changed=
+install_firmware fusiv-bmu.bin && lan_changed=1
+install_firmware fusiv-eth.bin && lan_changed=1
+fpga_changed=
+if [ -n "$with_usb" ]; then
+    cp "$WORK/root/$BITSTREAM" "$WORK/fpga.bit"
+    install_firmware fpga.bit && fpga_changed=1
+fi
 sync
 
-if [ -z "$changed" ]; then
-    echo "The firmware was installed already"
+if [ -n "$fpga_changed" ]; then
+    echo "Loading the FPGA"
+    /usr/sbin/load-fpga
+elif [ -n "$with_usb" ]; then
+    echo "The FPGA bitstream was installed already"
+fi
+
+if [ -z "$lan_changed" ]; then
+    echo "The LAN firmware was installed already"
     exit 0
 fi
-echo "Installed the firmware in $FIRMWARE_DIR"
 
 setup_networks=$(uci show wireless | sed -n "s/^wireless\.\([^.]*\)\.ssid='$SETUP_SSID_PREFIX.*'\$/\1/p")
 for network in $setup_networks; do

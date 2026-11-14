@@ -15,7 +15,8 @@
 # is connected to. The test image comes up at TEST_ADDRESS (default 192.168.0.250,
 # from openwrt/uci-defaults-test) and accepts the given key, which may also be the
 # public half of a key in the SSH agent. While it tries the setup network, this
-# machine is off the home network, for a few minutes at most.
+# machine is off the home network, for a few minutes at most. INSTALL_ARGS go to
+# avm-firmware-install, for example --usb.
 set -u
 TEST_DIR=$(cd "$(dirname "$0")" && pwd)
 IMAGE=$1
@@ -82,13 +83,14 @@ test_image_ssh 'awk -F: "\$1 == \"root\" { print (\$2 == \"\" ? \"root: no passw
 
 # The network restart at the end takes the setup network down and may end the
 # SSH session, so the output tells whether it got there.
-test_image_ssh avm-firmware-install < "$AVM_IMAGE" > "$OUT.install" 2>&1
+test_image_ssh avm-firmware-install ${INSTALL_ARGS:-} < "$AVM_IMAGE" > "$OUT.install" 2>&1
 cat "$OUT.install"
 return_home
 
 test_image_wait 120 || { echo "the test image doesn't answer over the LAN after the install"; exit 9; }
 echo "the test image answers over the LAN"
 test_image_ssh 'ip link show lan0; ls -l /lib/firmware; uci show wireless | grep ssid' 2>&1 | tee "$OUT.after"
+test_image_ssh 'dmesg | grep -i -e fpga -e usb; ls /sys/bus/usb/devices' 2>&1 | tee -a "$OUT.after"
 test_image_ssh test-diagnostics > "$OUT.state" 2>&1
 test_image_ssh 'dmesg; logread' > "$OUT.log" 2>&1
 test_image_ssh reboot

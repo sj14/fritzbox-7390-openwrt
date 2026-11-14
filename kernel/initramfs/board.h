@@ -9,8 +9,9 @@ void log_line(const char *line);
 // Reports in the AVM reboot status that /init really ran.
 void report_init_ran(void);
 unsigned int register_at(volatile char *base, unsigned int offset);
-// Loads the FPGA, which powers the USB port, if the image contains its bitstream.
-void load_fpga(void);
+// Loads the FPGA, which powers the USB port, from /lib/firmware/fpga.bit.
+// Returns 0 if it worked.
+int load_fpga(void);
 // Releases the switch from reset and logs its identity.
 void log_switch_identity(void);
 // Sets up the switch's connection to the Ethernet block.
