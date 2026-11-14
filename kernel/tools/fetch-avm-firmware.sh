@@ -14,11 +14,9 @@ BITSTREAM=lib/modules/bitfile.bit
 BMU_MODULE=$MODULES/ap_code/lib/fusivlib_lkm.ko
 ETH_MODULE=$MODULES/drivers/ethdriver/ethdriver_lkm.ko
 
-TOOLS_DIR=$(cd "$(dirname "$0")" && pwd)
-REPOSITORY_DIR=$(cd "$TOOLS_DIR/../.." && pwd)
 OUT=$1
-CROSS=${CROSS_COMPILE:-mips-unknown-linux-musl-}
 : "${UNSQUASHFS_AVM:?run this inside nix-shell, which provides UNSQUASHFS_AVM}"
+: "${AVM_FIRMWARE_TOOLS:?run this inside nix-shell, which provides AVM_FIRMWARE_TOOLS}"
 
 mkdir -p "$OUT/unpacked" "$OUT/ap-firmware"
 FIRMWARE=$OUT/$(basename "$FIRMWARE_URL")
@@ -29,14 +27,12 @@ echo "$FIRMWARE_SHA256  $FIRMWARE" | sha256sum -c -
 
 # The image is a tar. kernel.image holds the kernel and then the root file system.
 tar -xf "$FIRMWARE" -C "$OUT/unpacked" ./var/tmp/kernel.image
-python3 -I "$TOOLS_DIR/fix-avm-squashfs.py" "$OUT/unpacked/var/tmp/kernel.image" "$OUT/rootfs.squashfs"
+"$AVM_FIRMWARE_TOOLS/fix-avm-squashfs" "$OUT/unpacked/var/tmp/kernel.image" "$OUT/rootfs.squashfs"
 "$UNSQUASHFS_AVM" -f -d "$OUT/root" "$OUT/rootfs.squashfs" "$BITSTREAM" "$BMU_MODULE" "$ETH_MODULE"
 
 install -m 600 "$OUT/root/$BITSTREAM" "$OUT/bitfile.bit"
-python3 -I "$REPOSITORY_DIR/tools/extract-ap-firmware.py" "${CROSS}nm" "${CROSS}objcopy" \
-    "$OUT/root/$BMU_MODULE" BMUAP "$OUT/ap-firmware/fusiv-bmu.bin" > /dev/null
-python3 -I "$REPOSITORY_DIR/tools/extract-ap-firmware.py" "${CROSS}nm" "${CROSS}objcopy" \
-    "$OUT/root/$ETH_MODULE" ETHAP "$OUT/ap-firmware/fusiv-eth.bin" > /dev/null
+"$AVM_FIRMWARE_TOOLS/extract-ap-firmware" "$OUT/root/$BMU_MODULE" BMUAP "$OUT/ap-firmware/fusiv-bmu.bin"
+"$AVM_FIRMWARE_TOOLS/extract-ap-firmware" "$OUT/root/$ETH_MODULE" ETHAP "$OUT/ap-firmware/fusiv-eth.bin"
 chmod 600 "$OUT/ap-firmware/fusiv-bmu.bin" "$OUT/ap-firmware/fusiv-eth.bin"
 
 echo "BITFILE=$OUT/bitfile.bit AP_FIRMWARE_DIR=$OUT/ap-firmware"

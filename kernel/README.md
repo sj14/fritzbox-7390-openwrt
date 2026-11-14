@@ -9,11 +9,11 @@ Groundwork for milestone 1: a current kernel that boots from RAM to a first user
 The image needs files from AVM's firmware, which must not be published:
 
 - `BITFILE`, optional: the FPGA bitstream, which powers the USB port. Once loaded, the FPGA also lights a red LED inside the box, because nothing sets up the telephony behind it as AVM's driver does. Leave it out if you don't need USB.
-- `AP_FIRMWARE_DIR`: `fusiv-bmu.bin` and `fusiv-eth.bin`, written by `../tools/extract-ap-firmware.py` from `fusivlib_lkm.ko` (prefix `BMUAP`) and `ethdriver_lkm.ko` (prefix `ETHAP`).
+- `AP_FIRMWARE_DIR`: `fusiv-bmu.bin` and `fusiv-eth.bin`, written by `tools/extract-ap-firmware.c` from `fusivlib_lkm.ko` (prefix `BMUAP`) and `ethdriver_lkm.ko` (prefix `ETHAP`).
 
 Without the second one, `lan0` can't start and the box has no network at all, so `build.sh` stops without it.
 
-They don't have to come from a box. `tools/fetch-avm-firmware.sh <directory>`, run inside `nix-shell`, downloads AVM's public firmware 06.88 for the 7390, checks its SHA256 and writes `bitfile.bit` and `ap-firmware/` there. It reads AVM's squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `tools/fix-avm-squashfs.py` has corrected AVM's metadata pointers. The files it wrote on 2026-11-08 were identical to those copied from a box.
+They don't have to come from a box. `tools/fetch-avm-firmware.sh <directory>`, run inside `nix-shell`, downloads AVM's public firmware 06.88 for the 7390, checks its SHA256 and writes `bitfile.bit` and `ap-firmware/` there. It reads AVM's squashfs with Freetz's `unsquashfs` (`unsquashfs-avm.nix`), after `tools/fix-avm-squashfs.c` has corrected AVM's metadata pointers. The files it wrote on 2026-11-08 were identical to those copied from a box.
 
 ```bash
 nix-shell --run "tools/fetch-avm-firmware.sh build/avm-firmware"
@@ -46,7 +46,9 @@ AP_FIRMWARE_DIR=build/avm-firmware/ap-firmware BITFILE=build/avm-firmware/bitfil
 | `tools/fetch-openwrt-rootfs.sh` | builds the OpenWrt root file system with the ImageBuilder of a fixed release |
 | `tools/check-kernel-modules.sh` | stops the build if the kernel lacks a kernel module that the OpenWrt image brings |
 | `nixpkgs.nix` | the pinned nixpkgs that `shell.nix` and the other Nix files build with |
-| `tools/fix-avm-squashfs.py`, `unsquashfs-avm.nix` | make AVM's root file system readable |
+| `tools/fix-avm-squashfs.c`, `unsquashfs-avm.nix` | make AVM's root file system readable |
+| `tools/extract-ap-firmware.c` | writes the firmware of the packet processors from AVM's kernel modules |
+| `avm-firmware-tools.nix` | builds the two C tools above, for the build machine or the box |
 | `../tools/fusiv-links.c` | shows link changes of the five switch PHYs, to find which socket is which |
 
 ## Build

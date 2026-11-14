@@ -8,7 +8,7 @@
  *
  * The register layout and configuration blocks were worked out from AVM's
  * firmware, see DEVELOPMENT.md. The firmware itself comes from AVM's
- * modules, see tools/extract-ap-firmware.py.
+ * modules, see kernel/tools/extract-ap-firmware.c.
  */
 
 #include <linux/delay.h>
@@ -108,7 +108,7 @@
 #define QUOTA_PACKETS		64
 #define PHYSICAL_ADDRESS_MASK	0x1fffffff
 
-/* The layout of a firmware file from tools/extract-ap-firmware.py. */
+/* The layout of a firmware file from kernel/tools/extract-ap-firmware.c. */
 struct ap_firmware_header {
 	__be32 code_bytes;
 	__be32 data_bytes;

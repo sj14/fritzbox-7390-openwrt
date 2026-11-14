@@ -27,6 +27,7 @@ pkgs.mkShell {
 
   # Reads the root file system of AVM's firmware, for tools/fetch-avm-firmware.sh.
   UNSQUASHFS_AVM = "${import ./unsquashfs-avm.nix { inherit pkgs; }}/bin/unsquashfs3-multi";
+  AVM_FIRMWARE_TOOLS = "${import ./avm-firmware-tools.nix { inherit pkgs; }}/bin";
 
   # cfg80211 needs this database for 5 GHz.
   REGDB = "${pkgs.wireless-regdb}/lib/firmware";

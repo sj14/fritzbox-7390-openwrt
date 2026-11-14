@@ -144,7 +144,7 @@ if [ -n "${BITFILE:-}" ]; then
 fi
 
 # The firmware of the packet processors belongs to Ikanos and stays out of the
-# repository too. tools/extract-ap-firmware.py writes it from AVM's modules.
+# repository too. tools/extract-ap-firmware.c writes it from AVM's modules.
 add_file /lib/firmware/fusiv-bmu.bin "$AP_FIRMWARE_DIR/fusiv-bmu.bin" 600
 add_file /lib/firmware/fusiv-eth.bin "$AP_FIRMWARE_DIR/fusiv-eth.bin" 600
 
