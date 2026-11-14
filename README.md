@@ -69,7 +69,7 @@ Installing AVM's files:
 Setting it up:
 
 7. Connect the machine by cable directly to a LAN socket of the box, not to your home network yet, and open `http://192.168.1.1`. Log in as `root` with an empty password and set one under System, Administration.
-8. Under Network, Wireless, add your own networks. On 2.4 GHz, pick a fixed channel (1, 6 or 11) that your router doesn't use. Click "Save & Apply" at the end; "Save" alone only collects the changes.
+8. Under Network, Wireless, add your own networks. Click "Save & Apply" at the end; "Save" alone only collects the changes.
 9. Make the box an access point in your network: under Network, Interfaces, edit `lan`, give it a free address in your network with your router as gateway and DNS server, and under "DHCP Server" tick "Ignore interface", because your router hands out the addresses. "Save & Apply" then asks whether to keep the change, because the box leaves `192.168.1.1`; choose "Apply unchecked".
 10. Connect the box to your home network and open it at its new address. Make a backup under System, Backup / Flash Firmware, and keep it.
 
