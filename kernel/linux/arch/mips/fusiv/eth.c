@@ -69,7 +69,14 @@
 #define EGRESS_HOST		0xffffffff
 #define MAC_HOST_QUEUE		1
 #define MAC_INTERRUPT_MASK	0xb000
-#define CONFIG_WAIT_LIMIT_MS	15000
+/*
+ * The buffer manager answers its configuration once it has all 4080 buffers it
+ * asks for, one per pass of the wait loop. A pass sleeps a whole tick (4 ms at
+ * HZ=250), so that took 14.6 s in OpenWrt's preinit and longer than 15 s once
+ * OpenWrt's services ran, when an image without AVM's files opens lan0 only
+ * after the overlay with them is mounted: lan0 then failed with 3967 buffers.
+ */
+#define CONFIG_WAIT_LIMIT_MS	60000
 
 #define CONFIG_BYTES		352
 #define QUEUE_COUNT		4
