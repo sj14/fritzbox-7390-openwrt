@@ -8,10 +8,13 @@
  };
  
  static inline struct gpiomtd *gpio_nand_getpriv(struct mtd_info *mtd)
-@@ -45,6 +46,25 @@
+@@ -45,14 +46,36 @@
  	return container_of(mtd_to_nand(mtd), struct gpiomtd, nand_chip);
  }
  
++#define GPIO_NAND_MIN_WAITRDY_MS	100
+ 
+-#ifdef CONFIG_ARM
 +/*
 + * An 8 bit chip on the low byte lines of a 16 bit bus, as on the AVM
 + * FRITZ!Box 7390, only sees 16 bit accesses.
@@ -31,10 +34,30 @@
 +	return readb(gpiomtd->io);
 +}
 +
- 
- #ifdef CONFIG_ARM
++
++#if defined(CONFIG_ARM) || defined(CONFIG_MIPS)
  /* gpio_nand_dosync()
-@@ -83,7 +103,7 @@
+  *
+  * Make sure the GPIO state changes occur in-order with writes to NAND
+  * memory region.
+  * Needed on PXA due to bus-reordering within the SoC itself (see section on
+- * I/O ordering in PXA manual (section 2.3, p35)
++ * I/O ordering in PXA manual (section 2.3, p35), and on the Ikanos Fusiv
++ * Vx180, where AVM's driver reads the NOR flash on the same bus for it.
+  */
+ static void gpio_nand_dosync(struct gpiomtd *gpiomtd)
+ {
+@@ -65,7 +88,9 @@
+ 		 * region with a dependency on that read.
+ 		 */
+ 		tmp = readl(gpiomtd->io_sync);
++#ifdef CONFIG_ARM
+ 		asm volatile("mov %1, %0\n" : "=r" (tmp) : "r" (tmp));
++#endif
+ 	}
+ }
+ #else
+@@ -83,7 +108,7 @@
  		gpio_nand_dosync(gpiomtd);
  		gpiod_set_value(gpiomtd->cle, 1);
  		gpio_nand_dosync(gpiomtd);
@@ -43,7 +66,7 @@
  		gpio_nand_dosync(gpiomtd);
  		gpiod_set_value(gpiomtd->cle, 0);
  		return 0;
-@@ -93,15 +113,20 @@
+@@ -93,15 +118,20 @@
  		gpiod_set_value(gpiomtd->ale, 1);
  		gpio_nand_dosync(gpiomtd);
  		for (i = 0; i < instr->ctx.addr.naddrs; i++)
@@ -67,7 +90,7 @@
  			ioread16_rep(gpiomtd->io, instr->ctx.data.buf.in,
  				     instr->ctx.data.len / 2);
  		else
-@@ -111,8 +136,13 @@
+@@ -111,8 +141,13 @@
  
  	case NAND_OP_DATA_OUT_INSTR:
  		gpio_nand_dosync(gpiomtd);
@@ -83,15 +106,24 @@
  			iowrite16_rep(gpiomtd->io, instr->ctx.data.buf.out,
  				      instr->ctx.data.len / 2);
  		else
-@@ -121,8 +151,19 @@
+@@ -121,8 +156,28 @@
  		return 0;
  
  	case NAND_OP_WAITRDY_INSTR:
 -		if (!gpiomtd->rdy)
 -			return nand_soft_waitrdy(chip, instr->ctx.waitrdy.timeout_ms);
 +		if (!gpiomtd->rdy) {
-+			int ret = nand_soft_waitrdy(chip,
-+						    instr->ctx.waitrdy.timeout_ms);
++			/*
++			 * The timeout comes from the chip's own times, often
++			 * 1 ms, which is only a jiffy or two. When interrupts
++			 * delay the polling longer than that,
++			 * nand_soft_waitrdy() gives up without asking the chip
++			 * again, so wait at least GPIO_NAND_MIN_WAITRDY_MS.
++			 */
++			unsigned long timeout_ms =
++				max_t(unsigned long, instr->ctx.waitrdy.timeout_ms,
++				      GPIO_NAND_MIN_WAITRDY_MS);
++			int ret = nand_soft_waitrdy(chip, timeout_ms);
 +
 +			/*
 +			 * The status reads are operations of their own, which
@@ -105,7 +137,24 @@
  
  		return nand_gpio_waitrdy(chip, gpiomtd->rdy,
  					 instr->ctx.waitrdy.timeout_ms);
-@@ -315,6 +356,9 @@
+@@ -306,15 +361,23 @@
+ 
+ 	res = gpio_nand_get_io_sync(pdev);
+ 	if (res) {
+-		gpiomtd->io_sync = devm_ioremap_resource(dev, res);
+-		if (IS_ERR(gpiomtd->io_sync))
+-			return PTR_ERR(gpiomtd->io_sync);
++		/*
++		 * Only read, and it may belong to another device, such as the
++		 * NOR flash on the Fusiv Vx180, so it is not requested.
++		 */
++		gpiomtd->io_sync = devm_ioremap(dev, res->start,
++						resource_size(res));
++		if (!gpiomtd->io_sync)
++			return -ENOMEM;
+ 	}
+ 
+ 	ret = gpio_nand_get_config(dev, &gpiomtd->plat);
  	if (ret)
  		return ret;
  

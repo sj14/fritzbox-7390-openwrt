@@ -212,23 +212,26 @@
 		/*
 		 * The 512 MB NAND (Micron MT29F4G08ABADA) without a NAND controller, as
 		 * in AVM's direct_avm.c with CONFIG_MTD_NAND_DIRECT_AVM_GPIO: data through
-		 * the bus at 0x1e000000, the control lines on GPIOs 16 (/CE), 18 (CLE)
-		 * and 19 (ALE). The 8 bit chip sits on the low byte of a 16 bit bus, so
-		 * it only answers 16 bit accesses (patch 0012). The ready line (GPIO 21)
-		 * is left out: writes to the bus are posted, so it still reads ready
-		 * before a command has reached the chip. Linux asks the chip for its
-		 * status over the bus instead, which keeps the order. AVM switches on
-		 * the chip's own ECC, so it is read with it here too. /WP (GPIO 20) is
-		 * left out and the partition is read only, so Linux can't write the
-		 * NAND yet.
+		 * the bus at 0x1e000000, the control lines on GPIOs 16 (/CE), 18 (CLE),
+		 * 19 (ALE) and 20 (/WP). The 8 bit chip sits on the low byte of a 16
+		 * bit bus, so it only answers 16 bit accesses (patch 0012). The ready
+		 * line (GPIO 21) is left out: writes to the bus are posted, so it still
+		 * reads ready before a command has reached the chip. Linux asks the
+		 * chip for its status over the bus instead, which keeps the order.
+		 * GPIO writes and bus accesses can still overtake each other, so the
+		 * driver reads the NOR flash on the same bus around each change of the
+		 * lines, as AVM's driver does (io-sync-reg, patch 0012). AVM switches
+		 * on the chip's own ECC, so it is used here too.
 		 */
 		nand@1e000000 {
 			compatible = "gpio-control-nand";
 			reg = <0x1e000000 0x2>;
 			gpio-control-nand,16bit-bus;
+			gpio-control-nand,io-sync-reg = /bits/ 64 <0x1f000000>;
 			nce-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
 			ale-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
 			cle-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;
+			nwp-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
 			nand-ecc-mode = "on-die";
 
 			partitions {
@@ -236,10 +239,17 @@
 				#address-cells = <1>;
 				#size-cells = <1>;
 
+				/*
+				 * UBI attaches it at boot. It refuses a partition with
+				 * other content, such as AVM's, until ubiformat has
+				 * prepared it. The volume must not be called rootfs_data,
+				 * or OpenWrt's mount_root takes it as its overlay instead
+				 * of the NOR flash.
+				 */
 				partition@0 {
-					label = "nand";
+					compatible = "linux,ubi";
+					label = "ubi";
 					reg = <0x0 0x20000000>;
-					read-only;
 				};
 			};
 		};
