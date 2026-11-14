@@ -21,6 +21,21 @@ if [ -z "${AP_FIRMWARE_DIR:-}" ] && [ -z "${OPENWRT_ROOTFS:-}" ]; then
     exit 1
 fi
 
+# RELEASE_IMAGE=1 builds the image to pass on: a flash image of OpenWrt with
+# OpenWrt's own defaults (192.168.1.1 with DHCP, no root password, only the setup
+# network), without the test settings and without AVM's files, which may not be
+# passed on. It stops if one of them is given, so that none ends up in it by
+# mistake. TEST_DURATION_S stays 0 unless it is set, for a test from RAM.
+if [ -n "${RELEASE_IMAGE:-}" ]; then
+    if [ -n "${AP_FIRMWARE_DIR:-}${BITFILE:-}${SSH_PUBLIC_KEY:-}" ]; then
+        echo "A release image has none of AVM's files and no SSH key: leave out AP_FIRMWARE_DIR, BITFILE and SSH_PUBLIC_KEY" >&2
+        exit 1
+    fi
+    : "${OPENWRT_ROOTFS:?RELEASE_IMAGE needs OPENWRT_ROOTFS}"
+    FLASH_IMAGE=1
+    TEST_DURATION_S=${TEST_DURATION_S:-0}
+fi
+
 mkdir -p "$BUILD_DIR"
 
 if [ ! -f "$TARBALL" ]; then
@@ -119,21 +134,26 @@ dir /usr/sbin 755 0 0
 file /usr/sbin/hostapd $HOSTAPD 755 0 0
 LIST
 else
-    # The root password of the test image is random as well. SSH_PUBLIC_KEY may
-    # name a key that may log in.
-    ROOT_PASSWORD_FILE=$BUILD_DIR/root-password
-    if [ ! -f "$ROOT_PASSWORD_FILE" ]; then
-        head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$ROOT_PASSWORD_FILE"
-        chmod 600 "$ROOT_PASSWORD_FILE"
+    if [ -z "${RELEASE_IMAGE:-}" ]; then
+        # The root password of the test image is random as well. SSH_PUBLIC_KEY
+        # may name a key that may log in.
+        ROOT_PASSWORD_FILE=$BUILD_DIR/root-password
+        if [ ! -f "$ROOT_PASSWORD_FILE" ]; then
+            head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$ROOT_PASSWORD_FILE"
+            chmod 600 "$ROOT_PASSWORD_FILE"
+        fi
+        sed -e "s|@WIFI_PASSWORD@|$(cat "$PASSWORD_FILE")|g" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|g" \
+            "$SOURCE_DIR/openwrt/uci-defaults-test" > "$BUILD_DIR/uci-defaults-test"
+        chmod 600 "$BUILD_DIR/uci-defaults-test"
+        add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
+        add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
+        if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
+            add_file /etc/dropbear/authorized_keys "$SSH_PUBLIC_KEY" 600
+        fi
     fi
-    sed -e "s|@WIFI_PASSWORD@|$(cat "$PASSWORD_FILE")|g" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|g" \
-        "$SOURCE_DIR/openwrt/uci-defaults-test" > "$BUILD_DIR/uci-defaults-test"
-    chmod 600 "$BUILD_DIR/uci-defaults-test"
-    add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
     add_file /etc/board.d/01_leds "$SOURCE_DIR/openwrt/files/etc/board.d/01_leds" 755
     add_file /etc/board.d/02_network "$SOURCE_DIR/openwrt/files/etc/board.d/02_network" 755
     add_file /lib/upgrade/platform.sh "$SOURCE_DIR/openwrt/files/lib/upgrade/platform.sh" 644
-    add_file /usr/sbin/test-diagnostics "$SOURCE_DIR/openwrt/test-diagnostics" 755
     # avm-firmware-install takes the firmware of the packet processors out of
     # AVM's firmware image on the box.
     add_file /usr/sbin/avm-firmware-install "$SOURCE_DIR/openwrt/files/usr/sbin/avm-firmware-install" 755
@@ -152,9 +172,6 @@ else
     # The initramfs has it as well, but cfg80211 reads it again after the switch
     # to the squashfs.
     add_file /lib/firmware/regulatory.db "$REGDB/regulatory.db" 644
-    if [ -n "${SSH_PUBLIC_KEY:-}" ]; then
-        add_file /etc/dropbear/authorized_keys "$SSH_PUBLIC_KEY" 600
-    fi
 fi
 
 # The FPGA bitstream belongs to AVM and stays out of the repository. Pass its path
