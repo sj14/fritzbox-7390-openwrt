@@ -221,12 +221,15 @@
 		 * GPIO writes and bus accesses can still overtake each other, so the
 		 * driver reads the NOR flash on the same bus around each change of the
 		 * lines, as AVM's driver does (io-sync-reg, patch 0012). AVM switches
-		 * on the chip's own ECC, so it is used here too.
+		 * on the chip's own ECC, so it is used here too. After power-on the
+		 * chip often doesn't answer until it was reset a few times, as AVM's
+		 * driver notes and does before its scan (reset-at-probe, patch 0012).
 		 */
 		nand@1e000000 {
 			compatible = "gpio-control-nand";
 			reg = <0x1e000000 0x2>;
 			gpio-control-nand,16bit-bus;
+			gpio-control-nand,reset-at-probe;
 			gpio-control-nand,io-sync-reg = /bits/ 64 <0x1f000000>;
 			nce-gpios = <&gpio1 0 GPIO_ACTIVE_HIGH>;
 			ale-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
