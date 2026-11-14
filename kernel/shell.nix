@@ -9,6 +9,7 @@ pkgs.mkShell {
     mips.pkgsStatic.stdenv.cc.bintools
     pkgs.bc
     pkgs.bison
+    pkgs.cacert
     pkgs.curl
     pkgs.flex
     pkgs.gnumake
@@ -20,6 +21,14 @@ pkgs.mkShell {
     pkgs.xz
     pkgs.zstd
     pkgs.zig
+    # OpenWrt's ImageBuilder checks for these on the host, besides those that
+    # mkShell brings (coreutils, gawk, grep, tar, gzip, bzip2, patch, gcc).
+    pkgs.file
+    pkgs.git
+    pkgs.rsync
+    pkgs.util-linux
+    pkgs.wget
+    pkgs.which
   ];
 
   # A static MIPS build, which goes into the initramfs.

@@ -44,20 +44,15 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      # The tools that OpenWrt's ImageBuilder expects on the host, besides those
-      # of kernel/shell.nix.
-      - name: Install the ImageBuilder's host tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gawk rsync unzip zstd xsltproc file
-
       - uses: cachix/install-nix-action@v31
 
+      # kernel/shell.nix brings every tool, also those that OpenWrt's
+      # ImageBuilder expects on the host; --pure keeps the runner's own out.
       - name: Build the OpenWrt files
         working-directory: kernel
         run: |
           mkdir -p build
-          nix-shell --run "tools/fetch-openwrt-rootfs.sh build/openwrt" | tee build/fetch-openwrt-rootfs.log
+          nix-shell --pure --run "tools/fetch-openwrt-rootfs.sh build/openwrt" | tee build/fetch-openwrt-rootfs.log
           grep '^OPENWRT_ROOTFS=' build/fetch-openwrt-rootfs.log >> "$GITHUB_ENV"
 
       - name: Build the image
@@ -65,7 +60,7 @@ jobs:
         env:
           RELEASE_IMAGE: "1"
         run: |
-          nix-shell --run ./build.sh
+          nix-shell --pure --keep RELEASE_IMAGE --keep OPENWRT_ROOTFS --run ./build.sh
           df -h /
 
       - name: Attach the image to the release
