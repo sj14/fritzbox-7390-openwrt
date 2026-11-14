@@ -32,9 +32,9 @@ The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it c
 
 ## Installing
 
-> **Not tested end to end yet.** These steps install the image without AVM's files, which the box then takes from AVM's download itself. Each part was tested on its own: the build, the setup network and `avm-firmware-install` from RAM, flashing with an earlier image. OpenWrt's defaults at `192.168.1.1` and the settings in LuCI (steps 9 to 11) were not tried on this box yet.
+> **Not tested end to end yet.** These steps install the image without AVM's files, which the box then takes from AVM's download itself. The build, flashing, the first start after a power-on, the setup network and `avm-firmware-install` were tested on this box, but one by one, not in a row from a box with AVM's firmware. Not tried yet: getting an address from the box by DHCP in steps 7 and 9, and the settings in LuCI (steps 9 to 11), which work as on any OpenWrt device.
 
-You need a Linux machine with [Nix](https://nixos.org/download/) and Wi-Fi, connected by cable to one of the box's LAN sockets or to the same switch. The box's bootloader EVA writes the image. It answers at `192.168.178.1` for a few seconds after each power-on, and it is never written itself, so it stays available for a rescue. Your AVM settings in flash (`tffs`) stay untouched as well.
+You need a Linux machine with [Nix](https://nixos.org/download/) for the build, and Python 3 and Wi-Fi for the rest, connected by cable to one of the box's LAN sockets or to the same switch. The box's bootloader EVA writes the image. It answers at `192.168.178.1` for a few seconds after each power-on, and it is never written itself, so it stays available for a rescue. Your AVM settings in flash (`tffs`) stay untouched as well.
 
 Before you start:
 
@@ -61,7 +61,7 @@ Flashing:
 4. Start the tool. It waits up to four minutes for EVA:
 
    ```bash
-   nix-shell --run "python3 tools/eva-ramboot.py --wait 240 192.168.178.1 flash build/fritzbox-7390-flash.bin"
+   python3 tools/eva-ramboot.py --wait 240 192.168.178.1 flash build/fritzbox-7390-flash.bin
    ```
 
 5. Unplug the box's power, wait a few seconds and plug it in again. The tool writes the image (one to two minutes, don't cut the power) and restarts the box.
