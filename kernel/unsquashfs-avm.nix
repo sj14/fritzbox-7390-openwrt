@@ -2,6 +2,9 @@
 # Freetz-NG builds it: squashfs 3.4 with Freetz's patches, which add AVM's LZMA
 # variant (squashfs version 3:76), linked with the LZMA SDK 4.65 and Freetz's
 # patches for it. tools/fetch-avm-firmware.sh uses it.
+#
+# With pkgs set to a cross package set, such as
+# pkgsCross.mips-linux-gnu.pkgsStatic, it builds the same tool for the box.
 { pkgs ? import ./nixpkgs.nix }:
 
 let
@@ -24,7 +27,11 @@ let
     patchFlags = [ "-p0" ];
     patches = freetzPatches "lzma1-host";
     buildInputs = [ pkgs.zlib ];
-    buildPhase = "make -f makefile.gcc -C C/LzmaLib";
+    # The makefile names gcc, ar and ranlib itself, which would be the build
+    # machine's tools in a cross build.
+    buildPhase = ''
+      make -f makefile.gcc -C C/LzmaLib CC="$CC" AR="$AR" RANLIB="$RANLIB"
+    '';
     # squashfs finds the library and the headers in one directory.
     installPhase = "install -D C/LzmaLib/liblzma.a $out/liblzma1.a; cp -r C $out/C";
   };
@@ -41,7 +48,7 @@ pkgs.stdenv.mkDerivation {
   buildInputs = [ pkgs.zlib ];
   # The flags of Freetz's squashfs3-host.mk.
   buildPhase = ''
-    make -C squashfs-tools CFLAGS="-fcommon -std=gnu17 -O2" \
+    make -C squashfs-tools CC="$CC" CFLAGS="-fcommon -std=gnu17 -O2" \
       LZMA1_SUPPORT=1 LZMA_LIBNAME=lzma1 LZMA_DIR=${lzma1} unsquashfs-multi
   '';
   installPhase = "install -D squashfs-tools/unsquashfs-multi $out/bin/unsquashfs3-multi";
