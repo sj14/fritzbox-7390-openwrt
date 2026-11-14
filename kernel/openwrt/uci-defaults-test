@@ -45,7 +45,9 @@ SETTINGS
 done
 uci commit
 
-printf '%s\n%s\n' '@ROOT_PASSWORD@' '@ROOT_PASSWORD@' | passwd root > /dev/null
+if ! printf '%s\n%s\n' '@ROOT_PASSWORD@' '@ROOT_PASSWORD@' | passwd root > /dev/null 2>&1; then
+    echo "test image: setting the root password failed" > /dev/kmsg
+fi
 
 # For the log of a test run. This runs before OpenWrt's log service, so it goes
 # to the kernel log directly.

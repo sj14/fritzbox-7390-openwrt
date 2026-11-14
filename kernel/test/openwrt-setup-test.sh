@@ -76,6 +76,9 @@ echo "joined $SETUP_SSID after $(( $(date +%s) - start + 90 )) s"
 test_image_wait 120 || { echo "no SSH on the setup network"; exit 8; }
 echo "SSH on the setup network"
 test_image_ssh 'dmesg | grep -i "firmware"' > "$OUT.before" 2>&1
+# Whether openwrt/uci-defaults-test gave root a password, without the hash.
+test_image_ssh 'awk -F: "\$1 == \"root\" { print (\$2 == \"\" ? \"root: no password\" : \"root: password set\") }" /etc/shadow' \
+    >> "$OUT.before" 2>&1
 
 # The network restart at the end takes the setup network down and may end the
 # SSH session, so the output tells whether it got there.
@@ -85,7 +88,7 @@ return_home
 
 test_image_wait 120 || { echo "the test image doesn't answer over the LAN after the install"; exit 9; }
 echo "the test image answers over the LAN"
-test_image_ssh 'ip -br link show lan0; ls -l /lib/firmware; uci show wireless | grep ssid' 2>&1 | tee "$OUT.after"
+test_image_ssh 'ip link show lan0; ls -l /lib/firmware; uci show wireless | grep ssid' 2>&1 | tee "$OUT.after"
 test_image_ssh test-diagnostics > "$OUT.state" 2>&1
 test_image_ssh 'dmesg; logread' > "$OUT.log" 2>&1
 test_image_ssh reboot

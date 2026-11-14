@@ -126,7 +126,7 @@ else
         head -c 18 /dev/urandom | base64 | tr -d '/+=' > "$ROOT_PASSWORD_FILE"
         chmod 600 "$ROOT_PASSWORD_FILE"
     fi
-    sed -e "s|@WIFI_PASSWORD@|$(cat "$PASSWORD_FILE")|" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|" \
+    sed -e "s|@WIFI_PASSWORD@|$(cat "$PASSWORD_FILE")|g" -e "s|@ROOT_PASSWORD@|$(cat "$ROOT_PASSWORD_FILE")|g" \
         "$SOURCE_DIR/openwrt/uci-defaults-test" > "$BUILD_DIR/uci-defaults-test"
     chmod 600 "$BUILD_DIR/uci-defaults-test"
     add_file /etc/uci-defaults/99-fritzbox7390-test "$BUILD_DIR/uci-defaults-test" 600
