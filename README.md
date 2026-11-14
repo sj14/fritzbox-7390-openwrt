@@ -16,7 +16,7 @@ This is an unofficial hobby project, tested on one box only. It is not affiliate
 | Web interface (LuCI) and SSH | work |
 | LEDs | can be switched off or set in LuCI under System, LED Configuration |
 | USB | works, tested with a USB Ethernet adapter; needs the FPGA bitstream, which also lights a red LED inside the box, so leave it out if you don't use USB |
-| Saved settings | work, in 4.9 MB of flash (jffs2), which also holds installed packages |
+| Saved settings | work, in 4.9 MB of NOR flash (jffs2), or in about 460 MB of the internal NAND once moved there (see "Settings and packages on the NAND"); both also hold installed packages |
 | Updates (`sysupgrade`, also in LuCI) | work, and keep the settings |
 
 The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it can move about 130 Mbit/s between LAN and Wi-Fi.
@@ -27,7 +27,6 @@ The processor is the limit for Wi-Fi. Estimated from its load at 80 Mbit/s, it c
 |---|---|
 | DSL | not supported, there is no open driver, so the box only works behind another router |
 | Telephony (FON, ISDN, DECT) | not supported, there are no open drivers |
-| Internal storage (512 MB NAND) | not usable yet |
 | WLAN and DECT buttons | not set up yet |
 | Ready-made images | not possible: the image needs firmware files from AVM that may not be passed on, so everyone builds it; a script takes them from AVM's public firmware download (see `kernel/README.md`) |
 
@@ -77,6 +76,23 @@ Setting it up:
 ## Updating
 
 Build a new image the same way and install it under System, Backup / Flash Firmware, with "Keep settings" checked, or over SSH: copy it to `/tmp` on the box (`ssh root@192.168.0.250 "cat > /tmp/fritzbox-7390-flash.bin" < build/fritzbox-7390-flash.bin`) and run `sysupgrade /tmp/fritzbox-7390-flash.bin` there. OpenWrt warns that the image has no metadata; the image check of this board still runs. Tested over SSH, not yet in LuCI.
+
+As on any OpenWrt device, an update keeps the settings but not the packages you installed yourself, nor their package feeds. Install them again afterwards.
+
+## Settings and packages on the NAND
+
+The box has a 512 MB NAND that the AVM firmware uses as internal storage. OpenWrt can keep its settings and installed packages there, as on OpenWrt's own NAND devices, instead of the 4.9 MB in the NOR flash: once a UBI volume called `rootfs_data` exists on the NAND, OpenWrt uses it, and updates put the saved settings there. This **erases the AVM internal storage**, so copy anything you still need from it first.
+
+Over SSH on the box:
+
+1. Find the NAND partition: `grep '"ubi"' /proc/mtd` shows it, `mtd5` on a box with this image. The steps below use `/dev/mtd5`.
+2. Get `ubi-utils`. OpenWrt only builds it for targets with NAND, so it comes from `ath79/nand`, which has the same processor, but whose signing key the box doesn't know. Download `https://downloads.openwrt.org/releases/25.12.6/targets/ath79/nand/packages/ubi-utils-2.3.0-r1.apk` on your machine, compare its SHA256 with the line for it in `https://downloads.openwrt.org/releases/25.12.6/targets/ath79/nand/sha256sums`, copy it to `/tmp` on the box and install it with `apk add --allow-untrusted --force-non-repository /tmp/ubi-utils-2.3.0-r1.apk`.
+3. Prepare the NAND and make the volume: `ubiformat /dev/mtd5 -y`, then `ubiattach -p /dev/mtd5` and `ubimkvol /dev/ubi0 -N rootfs_data -m`.
+4. Remove `ubi-utils` again: `apk del ubi-utils`.
+5. Update the box with the image it already runs, with "Keep settings", as under "Updating". The update moves the settings to the NAND. Afterwards `df -h /overlay` shows `/dev/ubi0_0` with about 460 MB.
+6. Install your own packages again.
+
+Don't copy `/overlay` to the new volume by hand: without OpenWrt's state mark, it takes the volume as new and starts it empty, with the settings of the first start.
 
 ## Going back to the AVM firmware
 
