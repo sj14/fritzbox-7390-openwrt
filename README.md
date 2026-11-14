@@ -75,7 +75,7 @@ Setting it up:
 
 ## Updating
 
-Download the image of a newer release and install it under System, Backup / Flash Firmware, with "Keep settings" checked, or over SSH: copy it to `/tmp` on the box (`ssh root@<box> "cat > /tmp/fritzbox-7390-openwrt.bin" < fritzbox-7390-openwrt-<version>.bin`) and run `sysupgrade /tmp/fritzbox-7390-openwrt.bin` there. Both ways were tested, and the firmware that `avm-firmware-install` installed stays. The images carry OpenWrt's metadata since v0.4.0, and from then on the box refuses images without them, or for another box. To go back to an older release, check "Force upgrade" in LuCI or run `sysupgrade -F`.
+Download the image of a newer release and install it under System, Backup / Flash Firmware, with "Keep settings" checked, or over SSH: copy it to `/tmp` on the box (`ssh root@<box> "cat > /tmp/fritzbox-7390-openwrt.bin" < fritzbox-7390-openwrt-<version>.bin`) and run `sysupgrade /tmp/fritzbox-7390-openwrt.bin` there. Both ways were tested, and the firmware that `avm-firmware-install` installed stays. The images of the releases after v0.3.0 carry OpenWrt's metadata, and once the box runs one of them, it refuses images without them, or for another box. To go back to v0.3.0 or older, check "Force upgrade" in LuCI or run `sysupgrade -F`.
 
 As on any OpenWrt device, an update keeps the settings, and here also AVM's files, but not the packages you installed yourself, nor their package feeds. Install them again afterwards.
 
