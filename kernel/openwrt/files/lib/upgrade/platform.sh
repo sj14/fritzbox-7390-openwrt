@@ -14,6 +14,9 @@
 #   volume instead of making it again needs no ubi-utils.
 
 PART_NAME=firmware
+# The images of build.sh carry OpenWrt's metadata, with this box's board name in
+# supported_devices; sysupgrade refuses others unless forced (-F).
+REQUIRE_IMAGE_METADATA=1
 # The EVA image header, little endian: 0xfeed1281.
 EVA_MAGIC=8112edfe
 # The firmware partition, 0x20000 to 0xf00000 in flash.

@@ -16,6 +16,9 @@ TARBALL=$BUILD_DIR/linux-$KERNEL_VERSION.tar.xz
 TREE=$BUILD_DIR/linux-$KERNEL_VERSION-fusiv
 MAKE_ARGS=(ARCH=mips "CROSS_COMPILE=${CROSS_COMPILE:-mips-unknown-linux-musl-}" -j"$(nproc)")
 : "${OPENWRT_ROOTFS:?set OPENWRT_ROOTFS to the root directory that tools/fetch-openwrt-rootfs.sh prints}"
+# The version that a flash image names in its metadata: the release's tag in the
+# release workflow, else what git describes.
+IMAGE_VERSION=${IMAGE_VERSION:-$(git -C "$SOURCE_DIR" describe --tags --always --dirty 2>/dev/null || echo unknown)}
 
 # RELEASE_IMAGE=1 builds the image to pass on: a flash image of OpenWrt with
 # OpenWrt's own defaults (192.168.1.1 with DHCP, no root password, only the setup
@@ -199,6 +202,8 @@ if [ -n "${FLASH_IMAGE:-}" ]; then
     ROOTFS_PARTITION_SIZE=$((6 * 1024 * 1024))
     FIRMWARE_AREA_SIZE=$((0xee0000))
     ROOTFS_DATA_MARK='\xde\xad\xc0\xde'
+    # The board name that OpenWrt reads from the device tree's compatible.
+    BOARD_NAME=avm,fritzbox-7390
     EVA_DUMMY_URL=https://raw.githubusercontent.com/openwrt/openwrt/v25.12.0/target/linux/lantiq/image/eva.dummy.squashfs
     EVA_DUMMY_SHA256=9a6353949b14c225c29e64e93aff2271f888536373ae5c69c0cbd7079522e356
     EVA_DUMMY=$BUILD_DIR/eva.dummy.squashfs
@@ -238,6 +243,18 @@ if [ -n "${FLASH_IMAGE:-}" ]; then
     cat "$KERNEL_PARTITION" "$SQUASHFS" > "$FLASH"
     pad_to "$FLASH" $((KERNEL_PARTITION_SIZE + ROOTFS_PARTITION_SIZE))
     printf "$ROOTFS_DATA_MARK" >> "$FLASH"
+
+    # OpenWrt's image metadata, as its own boards carry them: sysupgrade compares
+    # supported_devices with the box's board name, and platform.sh requires them.
+    # They come after the mark, as on OpenWrt's boards, so mtd -j never writes
+    # them, and elsewhere they land in rootfs_data behind the mark, which
+    # mount_root erases. OPENWRT_ROOTFS lies at build_dir/target-*/root-* in the
+    # ImageBuilder, which brings fwtool.
+    IMAGEBUILDER_DIR=$(cd "$OPENWRT_ROOTFS/../../.." && pwd)
+    OPENWRT_VERSION=$(sed -n "s/^DISTRIB_RELEASE='\(.*\)'$/\1/p" "$OPENWRT_ROOTFS/etc/openwrt_release")
+    printf '{"metadata_version": "1.1", "compat_version": "1.0", "supported_devices": ["%s"], "version": {"dist": "OpenWrt", "version": "%s", "revision": "%s", "target": "fusiv", "board": "fritzbox-7390"}}\n' \
+        "$BOARD_NAME" "$OPENWRT_VERSION" "$IMAGE_VERSION" | "$IMAGEBUILDER_DIR/staging_dir/host/bin/fwtool" -I - "$FLASH"
+
     flash_size=$(stat -c %s "$FLASH")
     if [ "$flash_size" -gt "$FIRMWARE_AREA_SIZE" ]; then
         echo "The flash image ($flash_size bytes) is larger than the firmware area." >&2

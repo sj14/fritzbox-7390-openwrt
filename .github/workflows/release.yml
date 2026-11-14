@@ -57,7 +57,8 @@ jobs:
         working-directory: kernel
         env:
           RELEASE_IMAGE: "1"
-        run: nix-shell --pure --keep RELEASE_IMAGE --keep OPENWRT_ROOTFS --run ./build.sh
+          IMAGE_VERSION: ${{ github.ref_name }}
+        run: nix-shell --pure --keep RELEASE_IMAGE --keep IMAGE_VERSION --keep OPENWRT_ROOTFS --run ./build.sh
 
       - name: Attach the image to the release
         env:

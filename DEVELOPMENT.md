@@ -94,6 +94,8 @@ Once the NAND has the UBI volume `rootfs_data`, `mount_root` takes it instead: f
 - With the overlay in the NOR flash, it writes the image with `mtd -j`, which puts the saved settings behind the mark, from where `mount_root` restores them.
 - With the volume on the NAND, `mtd -j` would leave them where nothing reads them. So it writes the image alone, empties the overlay on the NAND (`upper`, `work`, `.fs_state`) and puts `sysupgrade.tgz` there, from where preinit restores it, as `nand_restore_config` in OpenWrt's `nand.sh` does (ath79 doesn't ship it). An overlay copied by hand instead, without `.fs_state`, made `mount_root` take the volume as new ("overlay filesystem has not been fully initialized yet").
 
+The flash image ends with OpenWrt's metadata (`fwtool -I`, from the ImageBuilder), with `avm,fritzbox-7390` in `supported_devices`, the OpenWrt release and `IMAGE_VERSION`, and `platform.sh` sets `REQUIRE_IMAGE_METADATA=1`. Images for other AVM boxes with EVA, such as the 7360, start with an EVA header too and passed the size check before; sysupgrade now refuses them. The metadata come after the mark, as on OpenWrt's own boards (`pad-rootfs | append-metadata`), so `mtd -j` stops at the mark and never writes them, and the 240 bytes that `mtd write` and EVA put behind the mark lie in `rootfs_data`, which `mount_root` erases or doesn't use.
+
 What `sysupgrade` keeps comes from the `keep.d` lists of the running image, not the new one. OpenWrt runs the uci-defaults again after each sysupgrade, so `openwrt/uci-defaults-test` leaves a box alone that it set up before. While `sysupgrade` writes the flash, the old system still answers on the network for a minute or two; an answer then says nothing about the new image.
 
 ## NAND

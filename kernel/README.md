@@ -50,7 +50,7 @@ nix-build shell.nix -A inputDerivation -o build/shell-inputs
 
 ### Flash image
 
-With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, the OpenWrt files as squashfs padded to 6 MB, and the mark `0xdeadc0de` that starts `rootfs_data`. It fills at most the firmware area of 14.875 MB, see "Flash layout of the installed image" in `../DEVELOPMENT.md`. The same file can be tested from RAM first, where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
+With `FLASH_IMAGE=1` as well, `build.sh` also writes `build/fritzbox-7390-flash.bin`: the EVA image, whose initramfs holds only `/init`, padded to 64 KB, a dummy squashfs that EVA expects after the kernel, padding to 4 MB, the OpenWrt files as squashfs padded to 6 MB, the mark `0xdeadc0de` that starts `rootfs_data`, and OpenWrt's image metadata, which name this box and `IMAGE_VERSION` (by default what `git describe` says). It fills at most the firmware area of 14.875 MB, see "Flash layout of the installed image" in `../DEVELOPMENT.md`. The same file can be tested from RAM first, where it finds its squashfs in `rootfs_ram`. For an installed image, build it with `TEST_DURATION_S=0`.
 
 ### Building the release image
 
