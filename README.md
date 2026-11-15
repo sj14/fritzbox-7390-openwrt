@@ -1,30 +1,35 @@
 # OpenWrt for the FRITZ!Box 7390
 
-A current Linux kernel (6.18) and OpenWrt 25.12 for the AVM FRITZ!Box Fon WLAN 7390, for use as an access point and switch behind an existing router. Unlike the AVM firmware, whose last update (06.88) is from 2023, it gets OpenWrt's security updates and its packages and settings, for example VLANs, several Wi-Fi networks or a guest network.
+**Give the FRITZ!Box 7390 a second life:** a current Linux kernel (6.18) and OpenWrt 25.12 for the AVM FRITZ!Box Fon WLAN 7390, as an access point and switch behind an existing router. AVM's last update for the box, 06.88, is from 2023.
 
-> **Early state.** OpenWrt runs installed on one box since 2026-11-08. Nobody else has followed these steps yet.
+This is an unofficial hobby project. It is not affiliated with AVM or the OpenWrt project.
 
-This is an unofficial hobby project, tested on one box only. It is not affiliated with AVM or the OpenWrt project.
+## Why OpenWrt instead of the AVM firmware
 
-## What works
+- **A current kernel and security updates:** Linux 6.18 with OpenWrt 25.12, instead of AVM's firmware based on Linux 2.6.28, which gets no updates any more. OpenWrt's packages get their security updates from OpenWrt, the kernel with the releases here. Kernel hardening (stack protector, zeroed stack variables, hardened slab freelists) is on.
+- **WPA3:** both radios offer WPA2 and WPA3, also mixed for older devices. AVM's firmware 06.88 knows only WPA2.
+- **Less CPU for the same Wi-Fi speed:** a download over 2.4 GHz reaches 80 Mbit/s with the CPU about 60% busy; AVM's firmware reached 79 Mbit/s with it about 90% busy. The CPU would have room for about 130 Mbit/s. See "Throughput" in `DEVELOPMENT.md`.
+- **Everything OpenWrt can do:** VLANs, several Wi-Fi networks, a guest network, LuCI and SSH, and OpenWrt's packages, with about 460 MB of the internal NAND for settings and packages.
+- **Updates that keep the settings**, in LuCI or with `sysupgrade`.
+- **LEDs that can be switched off**, in LuCI under System, LED Configuration.
+- **A way back:** the bootloader is never written, so a backup of the AVM firmware can be written back the same way as OpenWrt, see "Going back to the AVM firmware".
 
-| Feature | State |
-|---|---|
-| Wi-Fi 2.4 GHz and 5 GHz | works, WPA2 and WPA3 |
-| LAN sockets 1 to 4 | work at 1 Gbit/s |
-| Web interface (LuCI) and SSH | work |
-| LEDs | can be switched off or set in LuCI under System, LED Configuration |
-| USB | works, tested with a USB Ethernet adapter; needs the FPGA bitstream (`avm-firmware-install --usb`), which also lights a red LED inside the box, so leave it out if you don't use USB |
-| Saved settings | work, in about 460 MB of the internal NAND (UBIFS), which also holds installed packages; see "Settings and packages on the NAND" |
-| Updates (`sysupgrade`, also in LuCI) | work, and keep the settings |
+## What works and what doesn't
 
-## What doesn't work
+✅ works · ⚠️ works with limits · 🚧 not done yet · ❌ not supported
 
-| Feature | State |
-|---|---|
-| DSL | not supported, there is no open driver, so the box only works behind another router |
-| Telephony (FON, ISDN, DECT) | not supported, there are no open drivers |
-| WLAN and DECT buttons | not set up yet |
+| Feature | | Notes |
+|---|:---:|---|
+| Wi-Fi 2.4 GHz and 5 GHz | ✅ | WPA2 and WPA3 |
+| LAN sockets 1 to 4 | ✅ | 1 Gbit/s |
+| Web interface (LuCI) and SSH | ✅ | |
+| Saved settings and packages | ✅ | in about 460 MB of the internal NAND (UBIFS), see "Settings and packages on the NAND" |
+| Updates (`sysupgrade`, also in LuCI) | ✅ | keep the settings |
+| LEDs | ✅ | can be switched off or set in LuCI |
+| USB | ⚠️ | tested with a USB Ethernet adapter; needs the FPGA bitstream (`avm-firmware-install --usb`), which also lights a red LED inside the box, so leave it out if you don't use USB |
+| WLAN and DECT buttons | 🚧 | not set up yet |
+| DSL | ❌ | no open driver, so the box only works behind another router |
+| Telephony (FON, ISDN, DECT) | ❌ | no open drivers |
 
 ## Installing
 
