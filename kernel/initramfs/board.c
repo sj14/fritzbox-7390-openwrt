@@ -2,6 +2,7 @@
 // init (openwrt-init.c): the FPGA, the AR8316 switch and the kernel log.
 
 #include <errno.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -237,8 +238,10 @@ void log_switch_identity(void) {
 
 // Programs the board's Xilinx FPGA in slave serial mode from
 // /lib/firmware/fpga.bit. Under the AVM firmware the USB port gets power around
-// this step. Returns 0 if the FPGA raised its done pin.
-int load_fpga(void) {
+// this step. With release_prog, PROG is an input afterwards, as AVM's Piglet
+// driver leaves it, instead of an output held high. Returns 0 if the FPGA raised
+// its done pin.
+int load_fpga(bool release_prog) {
     enum {
         GPIO_PAGE = 0x19040000, GPIO_DIR = 0x0, GPIO_FLAG = 0x4, GPIO_CLEAR = 0x4, GPIO_SET = 0x6,
         PIN_CLK = 1 << 11, PIN_DATA = 1 << 12, PIN_PROG = 1 << 14, PIN_DONE = 1 << 8,
@@ -309,6 +312,10 @@ int load_fpga(void) {
     snprintf(line, sizeof(line), "FPGA: sent %u bytes, flags 0x%08x -> 0x%08x, done pin %d\n",
              (unsigned int)(size - start), before, after, (after & PIN_DONE) != 0);
     log_line(line);
+
+    if (release_prog) {
+        *direction = *direction & ~PIN_PROG;
+    }
 
     munmap((void *)gpio, PAGE_SIZE_BYTES);
     close(fd);

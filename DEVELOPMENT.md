@@ -168,7 +168,7 @@ The PCI bridge has two traps, both handled in patch 0003, see `kernel/README.md`
 - **LEDs:** GPIOs 22 to 28, active low, as in AVM's hw156 configuration: info green 22, info red 23, power green 24, power red 25, Festnetz 26, WLAN 27, Internet 28. Power shows OpenWrt's boot state (`led-boot`, `led-running`, `led-failsafe`, `led-upgrade`), WLAN is on while the 2.4 GHz network is up (`board.d/01_leds`).
 - **GPIOs 0 to 15** have no driver: `/init` and `load-fpga` drive the switch reset and the FPGA there through `/dev/mem`. GPIO 6 (DECT reset in AVM's configuration) must not be driven: setting it low reset the box.
 - **ath9k's own LEDs:** ath9k selects `MAC80211_LEDS` with `LEDS_CLASS`, adds `ath9k-phy0` and `ath9k-phy1` and drives GPIO 1 of each radio. Their wiring is unknown; nothing visible changed.
-- **Red LED inside the box:** it lights while the FPGA runs AVM's bitstream without AVM's closed Piglet driver (`Piglet_noemif.ko`), which boots the DECT chip (Dialog SC14488) through the FPGA. Turning it off would most likely mean booting the DECT chip like AVM, days of reverse engineering, so an image without USB leaves the bitstream out. The FPGA's state doesn't survive a restart: the LED was off again after one.
+- **Red LED inside the box:** it lights while the FPGA runs AVM's bitstream without AVM's closed Piglet driver (`Piglet_noemif.ko`), which boots the DECT chip (Dialog SC14488) through the FPGA. Turning it off would most likely mean booting the DECT chip like AVM, days of reverse engineering, so an image without USB leaves the bitstream out. AVM's Piglet driver lists DATA 12, DONE 8, CLK 11 and PROG 14 for the 7390; `piglet_reset` pulses PROG before loading, as `load_fpga` does, and leaves PROG an input afterwards, while `load_fpga` keeps it an output held high (`load-fpga --release-prog` does it AVM's way). Piglet doesn't reach the FPGA in another way after that ("noemif"); it then resets the DECT chip (`piglet_dectresetgpio`) and uploads AVM's DECT firmware over a UART in two stages (`dect_firstlevelfile`, `dect_secondlevelfile`). On the 7390 there is one bitstream; the switch between a POTS and a TE (ISDN) bitstream in AVM's power code is for other models. The FPGA's state doesn't survive a restart: the LED was off again after one.
 - **USB power** needs the FPGA, see `kernel/README.md`. USB also comes up when the FPGA is loaded long after EHCI and OHCI started.
 
 ## AVM's firmware files
@@ -221,6 +221,7 @@ Without a console, the kernel's RAM log, the reboot status and the LEDs show how
 
 - [ ] Test the README's "Installing" in a row, from a box with AVM's firmware: each part was tested on its own, but not DHCP from the box on the setup network and on `192.168.1.1`, nor the steps in LuCI
 - [ ] `/etc/init.d/fpga` at a start with `fpga.bit` already in the overlay
+- [ ] Whether `load-fpga --release-prog` turns off the red LED inside the box: install the bitstream with `avm-firmware-install --usb`, then run `load-fpga --release-prog` and look at the LED
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] Measure the UART pins and connect the console
