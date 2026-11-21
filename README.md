@@ -102,7 +102,7 @@ Write your backup of the AVM firmware the same way as the OpenWrt image, in step
 
 ## Development
 
-How the image is built and tested, and what was found out about the hardware: `kernel/README.md` and `DEVELOPMENT.md`. For each published release, a GitHub workflow (`.github/workflows/release.yml`) builds the image and attaches it to the release.
+How the image is built and tested, and what was found out about the hardware: `kernel/README.md` and `DEVELOPMENT.md`. For each published release, a GitHub workflow (`.github/workflows/release.yml`) builds the image and attaches it to the release. What it would take to add the box to OpenWrt itself: `UPSTREAM.md`.
 
 ## License
 
