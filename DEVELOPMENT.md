@@ -12,7 +12,7 @@ Values read from the box under the AVM firmware unless stated otherwise.
 |---|---|
 | Model | FRITZ!Box Fon WLAN 7390, HWRevision 156, HWSubRevision 3 |
 | Firmware | 06.88, the last one |
-| SoC | Ikanos Fusiv Vx180, 500 MHz according to the forum |
+| SoC | Ikanos Fusiv Vx180, 500 MHz: 25 MHz crystal × 40 (`PROC_PLL_CONTROL` `0x2800`) / 2, as AVM's `ikan_clk.c` computes it; the PLL reads the same under OpenWrt |
 | CPU | MIPS 24Kc V4.12, big endian, single core |
 | RAM | 128 MB (`memsize=128`), about 110 MB for Linux |
 | NOR | 16 MB at `0x1f000000`, Macronix MX29GL (CFI, AMD command set, x16, uniform 128 KB blocks) |
@@ -166,16 +166,59 @@ The PCI bridge has two traps, both handled in patch 0003, see `kernel/README.md`
 ## LEDs and the FPGA
 
 - **LEDs:** GPIOs 22 to 28, active low, as in AVM's hw156 configuration: info green 22, info red 23, power green 24, power red 25, Festnetz 26, WLAN 27, Internet 28. Power shows OpenWrt's boot state (`led-boot`, `led-running`, `led-failsafe`, `led-upgrade`), WLAN is on while the 2.4 GHz network is up (`board.d/01_leds`).
-- **GPIOs 0 to 15** have no driver: `/init` and `load-fpga` drive the switch reset and the FPGA there through `/dev/mem`. GPIO 6 (DECT reset in AVM's configuration) must not be driven: setting it low reset the box.
+- **GPIOs 0 to 15** have no driver: `/init` and `load-fpga` drive the switch reset and the FPGA there through `/dev/mem`. GPIO 6 is the DECT chip's reset (active low). Setting it low once reset the box, early in the port and without a note whether the FPGA was loaded; with the FPGA loaded, holding it low for seconds and Piglet's 1 ms pulse left the box running. Leave it an input all the same; AVM drives it high.
 - **ath9k's own LEDs:** ath9k selects `MAC80211_LEDS` with `LEDS_CLASS`, adds `ath9k-phy0` and `ath9k-phy1` and drives GPIO 1 of each radio. Their wiring is unknown; nothing visible changed.
-- **Red LED inside the box:** it lights while the FPGA runs AVM's bitstream without AVM's closed Piglet driver (`Piglet_noemif.ko`), which boots the DECT chip (Dialog SC14488) through the FPGA. Turning it off would most likely mean booting the DECT chip like AVM, days of reverse engineering, so an image without USB leaves the bitstream out. AVM's Piglet driver lists DATA 12, DONE 8, CLK 11 and PROG 14 for the 7390 and reaches the FPGA in no other way ("noemif"); after loading, it resets the DECT chip (`piglet_dectresetgpio`) and uploads AVM's DECT firmware over a UART in two stages (`dect_firstlevelfile`, `dect_secondlevelfile`). Its `piglet_reset` pulses PROG and then leaves it an input; tried after a load, that let PROG sink low, which erased the FPGA (DONE low): the red LED went off, and so did USB's power. So PROG has no pull-up, the LED belongs to the loaded FPGA, and `piglet_reset` unloads it. On the 7390 there is one bitstream; the switch between a POTS and a TE (ISDN) bitstream in AVM's power code is for other models. The FPGA's state doesn't survive a restart: the LED was off again after one.
+- **Red LED inside the box:** it lights while the FPGA runs AVM's bitstream, and nothing found so far turns it off while USB runs, so an image without USB leaves the bitstream out. Erasing the FPGA (PROG low) turns it off at once, and USB's power with it. See below for what was tried.
 - **USB power** needs the FPGA, see `kernel/README.md`. USB also comes up when the FPGA is loaded long after EHCI and OHCI started.
+
+### The red LED, the DSP and the PCM bus
+
+AVM never switches the LED on purpose: `SetStatusLED_FPGA` in the telephony driver `isdn_fbox_fon5.ko` is an empty function. It goes off under AVM as a side effect of starting the telephony, which these modules do (all closed, in AVM's image):
+
+- **`Piglet_noemif.ko`** loads the bitstream over DATA 12, DONE 8, CLK 11 and PROG 14 and reaches the FPGA in no other way ("noemif"). Its profile for HWRevision 152 and 156 also names GPIO 6 (DECT reset, and the TE detection input of other models) and the DECT UART at `0x19020000` (UART1). After the load it boots the DECT chip (Dialog SC14488) through that UART; it touches no other GPIO. Its `piglet_reset` pulses PROG and then leaves it an input, which let PROG sink low and erased the FPGA (DONE low): the LED went off, and so did USB's power. So PROG has no pull-up and `piglet_reset` unloads the FPGA. On the 7390 there is one bitstream; the POTS and TE (ISDN) bitstreams in Piglet's code are for other models. Before reloading the bitstream, Piglet switches the PCM bus off (`pcmlink_bus_off`) and on again afterwards.
+- **`pcmlink.ko`** reaches the FPGA's registers only through DSP 0, an ADSP-218x core in the Fusiv. It releases the DSP from reset (`0x19050300`, bits 9 and 7; DSP 1 has bits 25 and 23), checks the IDMA port at `0x191c0000` (address at `+0`, program memory words at `+4`, data memory at `+8`, data memory from `0x4000`) by writing and reading back `0xaabb00dd`, and loads `adsp0_firmware.bin`: sections of a big endian header {magic, address, count}, `0xdddddddf` for data memory (16 bit words), `0xeeeeeeef` for program memory, `0xbbbbbbbb` at the end. Each 24 bit program word is stored as `(w >> 16) << 8 | (w & 0xff)` of a 32 bit word, and program word 0 is written last, which starts the DSP. Interrupts from DSP 0 (IRQ 17) are acknowledged with 1 at `0x19050634`.
+- **The firmware's shared memory** starts with a header at data address 0 (magic `0xabcd`). Word `0x0a` points to a mirror of the FPGA registers (`0x800`, two words per 32 bit register at `0x800 + reg/2`), word `0x0e` to a ring of register writes (`0x19d`: write index, read index, size 64, then entries {reg, value >> 16, value & 0xffff}). `pcmlink_ul_writeregister(reg, value, mask)` merges the value into the mirror's old one. `ADSPLink_Poll` first writes `0x540` to register `0x48` and waits to read it back; `Reset_FPGA` in the telephony driver then writes registers `0x40`, `0x48`, `0x64` and `0x3c`.
+- **The DSP code** (disassembled, see below) handles the ring only in the interrupt of its serial port SPORT0, and receives the mirror there. SPORT0 runs in multichannel mode with an external bit clock (`0x800F` in `0x3FF6`); the timer interrupt counts while SPORT0 stands still (data word `0x11`).
+
+Tried on the box with the FPGA loaded, the LED stayed on in each case:
+
+| Step | Result |
+|---|---|
+| GPIO 6 high, Piglet's reset pulse (1 ms low), held low (`tools/fusiv-gpio.c`) | no change, the box kept running |
+| GPIO 5 (`gpio_avm_piglet_irq` in AVM's table, an output there) high and low | no change |
+| DSP 0 started with AVM's firmware (`tools/fusiv-adsp.c`) | the DSP runs, but SPORT0 never gets a clock: its interrupt counters (`0xE28`, `0xE29`) stay 0, the ring isn't read, the mirror stays 0 |
+| Interrupt acknowledged as `pcmlink`'s handler does, GPIOs 5 and 6 and `MODE_CONTROL` as under AVM | still no SPORT0 clock |
+
+Neither `pcmlink` nor AVM's kernel set up a PCM clock, so it comes from outside the Fusiv, most likely from the DECT chip as the bus master, routed through the FPGA. Booting the DECT chip is the remaining step, and it was not done: AVM's DECT firmware makes the box a DECT base station, Piglet patches calibration data and the base's identity (RFPI) from AVM's configuration into it, and nothing here would control the radio. Piglet's loader is the UART boot of Dialog's SC144xx: GPIO 6 low, UART1 at 9600 baud 8N1, GPIO 6 high; the chip sends STX (`0x02`), the host answers SOH (`0x01`) and the length, the chip ACK (`0x06`), then the data follow and the chip's XOR checksum must match before the host's ACK. The first stage (`dectfw_firstlevel_488.hex`) is a small loader, the second (`dectfw_secondlevel_488.hex`) goes the same way at 230400 baud with a 4 byte length. Even with a PCM clock, which FPGA register switches the LED is unknown.
+
+## Registers compared with the AVM firmware
+
+`tools/fusiv-regdump.c` read the system and GPIO registers under AVM's firmware (`hardware/registers-hw156.txt`) and under OpenWrt (2026-11-21, FPGA loaded). AVM's kernel sets its pins in `init_gpio_config()` (`ikan_gpio.c`) from the table in `avm_hw_config_hw156.h`. The differences:
+
+| Register | AVM | OpenWrt | Meaning |
+|---|---|---|---|
+| `PROC_PLL_CONTROL`, `SYSTEM_PLL_CONTROL`, `DSP_PLL_CONTROL` | `0x2800`, `0x2800`, `0x1c00` | same | same clocks: the CPU runs at 500 MHz, which `prom.c` assumes as AVM's `plat_time.c` does |
+| `CLK_GATE_CONTROL` | `0xffff` | `0xb7ff` | bits 11 and 14 (WAP and SAP APU clocks) stay off; the Ethernet clocks that `eth.c` needs are on |
+| `MODE_CONTROL` | `0x00081c10` | `0x00081c20` | AVM clears `UART2_EN` (bit 5), which puts the console UART2 on GPIOs 3 and 4 as well, and sets bit 4 for the DECT UART there; EVA leaves bit 5 set, so the console also reaches the DECT chip's UART pins. AVM's console is the same UART2 (`console=ttyS1,115200n8r`), so it has pins of its own. Ikanos' `vx180.h` calls bit 4 `NTR_CLK_ENABLE` (NTR clock on GPIO 7), AVM's table uses it for the DECT UART |
+| `SYSTEM_CONTROL` | `0xe6000000` | `0xe0000000` | AVM puts SPI chip selects on GPIOs 1 and 2 (`gpio_avm_spi_flash_cs`, `gpio_avm_spi_dect_cs`), for the DECT chip; nothing here uses SPI |
+| `PAD_PIO_MISC_CTRL` | `0x2` | `0x3` | bit 0 is the VDSL PHY's CPU release, unused here |
+| `GPIO0_DIR` | `0xd861` | `0xd800` | GPIO 0 (`spi_flash_wp`), 5 (`piglet_irq`, an output although its name says interrupt) and 6 (DECT reset) are outputs under AVM, all three high; here they are inputs and read high |
+| `GPIO1_DIR` | `0x1fdf` | `0x1fdd` | GPIO 17 (`nand_cs2`) is an output under AVM; the 7390's NAND has one chip, on /CE GPIO 16 |
+| `GPIO0/1_IRQ_ENABLE`, `POLAR`, `SENSITIVITY` | GPIOs 7, 13, 21, 29, 31 | none | AVM's interrupts: NAND ready (7 and 21 in AVM's table), the DECT (29) and WLAN (31) buttons, and 13, which the table doesn't name |
+
+None of them explains the red LED. The `MODE_CONTROL` difference is the only one with an effect on OpenWrt: clearing bit 5 as AVM does would keep the console off the DECT chip's pins, but it waits for a connected console to check that the console still works.
 
 ## AVM's firmware files
 
 `FRITZ.Box_Fon_WLAN_7390-06.88.image` is a tar, whose `var/tmp/kernel.image` holds the kernel and at `0x15a500` the root file system: AVM's squashfs 3.76, big endian, LZMA. `sasquatch -be` read only its superblock. Freetz's squashfs 3.4 with its patches (`kernel/unsquashfs-avm.nix`) recognizes the format, but AVM's metadata (all tables and the fragment index entries) lies 256 bytes behind where the superblock and the index point, while the data blocks lie where the inodes say; `kernel/tools/fix-avm-squashfs.c` raises those pointers by `0x100`. The files then come out byte for byte as copied from a box.
 
 The same tools run on the box for `avm-firmware-install`. It streams the image, because with about 26 MB of RAM free under OpenWrt the image, `kernel.image` and the squashfs don't fit into `/tmp` together.
+
+Reading AVM's closed modules and firmware:
+
+- **MIPS modules** (`.ko`): `objdump -dr` from `kernel/shell.nix`'s cross binutils for single functions; Ghidra 12 from nixpkgs decompiles a whole module to C headless (`ghidra-analyzeHeadless <project dir> <name> -import <module.ko> -postScript <script> -deleteProject`, with a small script that prints `DecompInterface.decompileFunction()` for each function). Its addresses are the `.text` offsets plus `0x10060`.
+- **DSP firmware** (`adsp0_firmware.bin`): MAME's `unidasm -arch adsp21xx` from `mame-tools`, which loads SDL3 at start (`LD_LIBRARY_PATH` with nixpkgs' `sdl3.lib`). It takes the 24 bit program words as 32 bit little endian words, converted from AVM's layout as described above. The interrupt vectors are 4 words apart: reset `0x00`, SPORT0 transmit `0x10`, SPORT0 receive `0x14`, timer `0x28`.
+- **AVM's GPL kernel** (`GPL-release_kernel.tar.gz` in the source package) has the Fusiv headers with the register bits (`vx180.h`), the clock code (`ikan_clk.c`) and the pin table (`avm_hw_config_hw156.h`).
 
 ## Testing
 
@@ -224,6 +267,7 @@ Without a console, the kernel's RAM log, the reboot status and the LEDs show how
 - [ ] Data rate between two LAN sockets, which needs a second wired device
 - [ ] Buttons (WLAN, DECT) through `gpio-keys`
 - [ ] Measure the UART pins and connect the console
+- [ ] With the console connected: clear `UART2_EN` in `MODE_CONTROL` as AVM does and check that the console still works
 - [ ] Why the NAND's first probe fails after a power-on
 
 ## Sources
