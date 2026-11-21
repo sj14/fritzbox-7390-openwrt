@@ -7,22 +7,21 @@
  *   firmware. Only a kernel that EVA started from RAM writes it, so that an
  *   installed OpenWrt keeps the log of the test before it.
  * - The LEDs show how far the boot got.
- * - The hardware watchdog restarts the box if the kernel hangs.
- * - A kernel timer serves the watchdog, so that it only fires when the kernel
- *   hangs. A test run ends when /init restarts the box.
+ * - The AVM reboot status text shows it even if the RAM log is lost.
  *
- * Register usage follows AVM's GPL kernel (ikan_wdt.c, ikan_gpio.c, vx180.h).
+ * The hardware watchdog, which restarts the box if the kernel hangs, is not
+ * part of this, see watchdog.c. Built only with CONFIG_FUSIV_BRINGUP.
+ *
+ * Register usage follows AVM's GPL kernel (ikan_gpio.c, vx180.h).
  */
 
 #include <linux/bits.h>
 #include <linux/init.h>
 #include <linux/io.h>
-#include <linux/jiffies.h>
 #include <linux/kernel.h>
-#include <linux/printk.h>
+#include <linux/memblock.h>
 #include <linux/sizes.h>
 #include <linux/string.h>
-#include <linux/timer.h>
 
 #include <asm/sections.h>
 
@@ -52,19 +51,10 @@
  *
  *   software  the kernel never reached prom_init
  *   poweron   prom_init was reached
- *   watchdog  /init ran, it writes the matching text itself
  */
 #define STATUS_TEXT(status)	"(c) AVM 2013, Reboot Status is: " status
 #define STATUS_REPEATED(status)	STATUS_TEXT(status) STATUS_TEXT(status) STATUS_TEXT(status)
 #define STATUS_POWERON		STATUS_REPEATED("Power-On-Reboot")
-
-#define WDT_CTRL		CKSEG1ADDR(0x19000008)
-#define WDT_CTRL_DISABLE	BIT(0)
-#define WDT_CTRL_SERVICE	(0xa << 8)
-#define WDT_CTRL_RELOAD_MAX	(0xfffc << 16)
-
-/* The counter runs at about 10170 Hz, so 0xfffc lasts about 6.4 s. */
-#define WDT_SERVICE_INTERVAL	(HZ / 10)
 
 /* The LEDs are GPIOs 16 to 31, active low. */
 #define GPIO_BANK1_DIR		CKSEG1ADDR(0x190b0000)
@@ -76,7 +66,6 @@
 
 static u32 ramlog_length;
 static bool ramlog_enabled;
-static struct timer_list wdt_timer;
 
 static void led_on(u16 led)
 {
@@ -164,12 +153,11 @@ void bringup_mark_ram(void)
 	}
 }
 
-static void wdt_start(void)
+/* Keeps Linux away from the reboot status text and the RAM log. */
+void bringup_reserve_memory(void)
 {
-	void __iomem *ctrl = (void __iomem *)WDT_CTRL;
-
-	__raw_writel(WDT_CTRL_DISABLE | WDT_CTRL_RELOAD_MAX, ctrl);
-	__raw_writel(WDT_CTRL_SERVICE | WDT_CTRL_RELOAD_MAX, ctrl);
+	memblock_reserve(FUSIV_MAILBOX_PHYS, FUSIV_MAILBOX_SIZE);
+	memblock_reserve(FUSIV_RAMLOG_PHYS, FUSIV_RAMLOG_SIZE);
 }
 
 void bringup_init(bool write_log)
@@ -179,29 +167,4 @@ void bringup_init(bool write_log)
 	if (write_log)
 		ramlog_init();
 	bringup_set_stage(STAGE_PROM_INIT);
-	wdt_start();
 }
-
-static void wdt_timer_tick(struct timer_list *timer)
-{
-	static bool first_tick_seen;
-
-	__raw_writel(WDT_CTRL_SERVICE, (void __iomem *)WDT_CTRL);
-
-	if (!first_tick_seen) {
-		first_tick_seen = true;
-		bringup_set_stage(STAGE_TIMER_RUNNING);
-		pr_info("bringup: timer interrupts work\n");
-	}
-
-	mod_timer(timer, jiffies + WDT_SERVICE_INTERVAL);
-}
-
-static int __init wdt_timer_init(void)
-{
-	timer_setup(&wdt_timer, wdt_timer_tick, 0);
-	mod_timer(&wdt_timer, jiffies + WDT_SERVICE_INTERVAL);
-
-	return 0;
-}
-early_initcall(wdt_timer_init);

@@ -1,0 +1,10 @@
+--- a/arch/mips/Kconfig
++++ b/arch/mips/Kconfig
+@@ -1084,6 +1084,7 @@
+ source "arch/mips/bcm63xx/Kconfig"
+ source "arch/mips/bmips/Kconfig"
+ source "arch/mips/econet/Kconfig"
++source "arch/mips/fusiv/Kconfig"
+ source "arch/mips/generic/Kconfig"
+ source "arch/mips/ingenic/Kconfig"
+ source "arch/mips/jazz/Kconfig"

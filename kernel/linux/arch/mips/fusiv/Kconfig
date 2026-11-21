@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0
+if FUSIV
+
+config FUSIV_BRINGUP
+	bool "Debugging aids for testing images from RAM"
+	help
+	  Aids for testing a kernel that the bootloader EVA started from RAM,
+	  on a box without a serial console:
+
+	  - a log of the kernel messages in RAM, which survives a software
+	    reset and which tools/fusiv-ramlog.c reads afterwards,
+	  - LEDs and the AVM reboot status text that show how far the boot
+	    got,
+	  - the image that EVA left in RAM as the MTD partitions kernel_ram
+	    and rootfs_ram, so that a flash image can be tested from RAM.
+
+	  They are not needed to run an image from flash.
+
+endif

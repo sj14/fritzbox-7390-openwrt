@@ -1,4 +1,6 @@
 CONFIG_FUSIV=y
+# RAM log, boot stage LEDs and rootfs_ram for tests from RAM, see arch/mips/fusiv/Kconfig.
+CONFIG_FUSIV_BRINGUP=y
 CONFIG_CPU_MIPS32_R2=y
 CONFIG_CPU_BIG_ENDIAN=y
 CONFIG_HZ_250=y

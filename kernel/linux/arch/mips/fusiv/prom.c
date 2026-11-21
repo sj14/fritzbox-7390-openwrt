@@ -24,6 +24,7 @@
 #include <asm/time.h>
 
 #include "bringup.h"
+#include "fusiv.h"
 
 #define SYSCONF_REBOOT_CTRL	CKSEG1ADDR(0x19000000)
 
@@ -112,8 +113,7 @@ static void __init init_memory(void)
 	if (memsize > BME_START + BME_SIZE)
 		memblock_add(BME_START + BME_SIZE, memsize - BME_START - BME_SIZE);
 
-	memblock_reserve(FUSIV_MAILBOX_PHYS, FUSIV_MAILBOX_SIZE);
-	memblock_reserve(FUSIV_RAMLOG_PHYS, FUSIV_RAMLOG_SIZE);
+	bringup_reserve_memory();
 }
 
 static void fusiv_restart(char *command)
@@ -131,6 +131,7 @@ void __init prom_init(void)
 	/* tools/eva-ramboot.py passes mtdram1= when it starts an image from RAM. */
 	init_cmdline();
 	bringup_init(strstr(arcs_cmdline, "mtdram1=") != NULL);
+	fusiv_watchdog_start();
 
 	init_memory();
 }

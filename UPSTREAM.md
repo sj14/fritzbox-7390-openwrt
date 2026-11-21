@@ -17,12 +17,12 @@ Whether this project could become an official OpenWrt device through a pull requ
 2. **Not an OpenWrt target.** The kernel (6.18.62) is built here with Nix, and the root file system comes from the ImageBuilder of `ath79/generic`. OpenWrt expects a `target/linux/fusiv/` on the kernel version OpenWrt uses at the time, with patches in OpenWrt's layout and an `image/Makefile` with a device profile, built in OpenWrt's build system.
 3. **An `/init` of its own instead of OpenWrt's preinit.** `kernel/initramfs/openwrt-init.c` mounts the squashfs, sets up the NAND and sets up the switch. OpenWrt's own mechanisms (preinit, `mount_root` of fstools with a UBI volume `rootfs_data`) and kernel drivers would have to do this.
 4. **Hardware access from userspace.** GPIOs 0 to 15 (FPGA, switch reset) are driven through `/dev/mem`, and the switch is set up over MDIO from `kernel/initramfs/board.c`. Upstream this needs a GPIO driver for all pins, an MDIO bus driver and the AR8316 through the existing `ar8216` driver (swconfig) or DSA. Whether swconfig is still acceptable for a new target is open.
-5. **Drivers in the wrong place.** `eth.c`, `gpio.c` and `usb.c` lie in `arch/mips/fusiv/`, partly as `arch_initcall`s instead of device tree drivers. Expected are drivers under `drivers/` with device tree bindings.
+5. **Drivers in the wrong place.** `eth.c`, `gpio.c` and `usb.c` lie in `arch/mips/fusiv/`. `eth.c` and `gpio.c` are device tree drivers already, but `usb.c` and the PCI host in `arch/mips/pci/pci-fusiv.c` are `arch_initcall`s with fixed addresses. The watchdog in `watchdog.c` is served by a kernel timer instead of being a driver for OpenWrt's `procd`. Expected are drivers under `drivers/` with device tree bindings.
 6. **Patches unlikely to be accepted as they are:**
    - the fast-forward shortcuts in the bridge and mac80211 (`linux/net/bridge/br_fast_forward.c`, `0005`, `0009`),
    - the throughput changes to ath9k (`0006` to `0008`),
    - the PCI bridge workaround (`0003`) and the changes to jffs2 and gpio-nand (`0011`, `0012`), which would need a good justification or would have to go into the upstream kernel first.
-7. **Bring-up aids would have to go:** the RAM log, `TEST_DURATION_S` and `ramboot.c`.
+7. **Bring-up aids would have to go:** the RAM log, the boot stage LEDs and `ramboot.c` are built only with `CONFIG_FUSIV_BRINGUP`, so a kernel for OpenWrt can leave them out by switching it off. `TEST_DURATION_S` lies in `/init` and goes with it (point 3).
 8. **A maintainer for the target.** A new target is only taken in when someone keeps it working through OpenWrt's kernel updates; otherwise it becomes source-only or is removed.
 
 ## A realistic way

@@ -21,13 +21,26 @@ enum bringup_stage {
 	STAGE_RESTART,
 };
 
+#ifdef CONFIG_FUSIV_BRINGUP
+
 /*
  * write_log is false for a kernel started from flash, so that it keeps the RAM log
  * of a test kernel that EVA started from RAM before it.
  */
 void bringup_init(bool write_log);
+void bringup_reserve_memory(void);
 void bringup_set_stage(enum bringup_stage stage);
 void bringup_log_char(char c);
 void bringup_mark_ram(void);
+
+#else
+
+static inline void bringup_init(bool write_log) { }
+static inline void bringup_reserve_memory(void) { }
+static inline void bringup_set_stage(enum bringup_stage stage) { }
+static inline void bringup_log_char(char c) { }
+static inline void bringup_mark_ram(void) { }
+
+#endif
 
 #endif

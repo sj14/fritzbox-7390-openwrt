@@ -9,11 +9,12 @@ The kernel, the first userspace program and the build of the OpenWrt images: tes
 | `linux/` | new files, copied over the kernel tree |
 | `linux/arch/mips/fusiv/prom.c` | boot arguments, memory, early console, reset, CP0 timer setup |
 | `linux/arch/mips/fusiv/irq.c` | Vx180 interrupt controller |
-| `linux/arch/mips/fusiv/bringup.c` | RAM log, LEDs, watchdog |
+| `linux/arch/mips/fusiv/watchdog.c` | hardware watchdog, served by a kernel timer |
+| `linux/arch/mips/fusiv/bringup.c` | RAM log, boot stage LEDs, reboot status text (`CONFIG_FUSIV_BRINGUP`) |
 | `linux/arch/mips/fusiv/eth.c` | LAN port through the packet processors |
 | `linux/arch/mips/fusiv/gpio.c` | GPIOs 16 to 31, for the LEDs |
 | `linux/arch/mips/fusiv/usb.c` | USB PHY and clock |
-| `linux/arch/mips/fusiv/ramboot.c` | the image that EVA started from RAM as an MTD device, for testing a flash image |
+| `linux/arch/mips/fusiv/ramboot.c` | the image that EVA started from RAM as an MTD device, for testing a flash image (`CONFIG_FUSIV_BRINGUP`) |
 | `linux/net/bridge/br_fast_forward.c` | short path for IP packets between the LAN port and the radios, past the rest of the bridge |
 | `linux/arch/mips/boot/dts/ikanos/` | device tree |
 | `linux/arch/mips/configs/fusiv_defconfig` | kernel configuration |
@@ -101,7 +102,7 @@ The scripts:
 
 `tools/eva-ramboot.py 192.168.178.1 reboot` leaves EVA if the box stays there.
 
-The kernel has bring-up aids in `linux/arch/mips/fusiv/bringup.c`:
+The kernel has bring-up aids in `linux/arch/mips/fusiv/bringup.c` and `ramboot.c`. They are built with `CONFIG_FUSIV_BRINGUP`, which `fusiv_defconfig` switches on, so that they can be left out of a kernel for OpenWrt itself (see `../UPSTREAM.md`). The watchdog in `watchdog.c` is always built.
 
 - **RAM log:** all kernel messages also go to 256 KB of RAM at `0x01c00000`, but only from a kernel that EVA started from RAM (`mtdram1=` on its command line), so an installed OpenWrt keeps the log of the test before it. `fusiv-ramlog dump` reads it, `fusiv-ramlog scan` finds marks that the kernel writes every 64 KB right before a restart.
 - **LEDs:** Internet = `prom_init` reached, Festnetz = interrupt setup reached, WLAN = timer setup reached, Info = timer interrupts work.
